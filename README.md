@@ -1,96 +1,72 @@
-# Obsidian Sample Plugin
+# Obsidian Edge TTS Plugin 🗣️
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+[![GitHub release](https://img.shields.io/github/v/release/travisvn/obsidian-edge-tts-plugin)](https://github.com/travisvn/obsidian-edge-tts-plugin/releases)
+![GitHub stars](https://img.shields.io/github/stars/travisvn/obsidian-edge-tts?style=social/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/your-username/obsidian-edge-tts-plugin)](https://github.com/your-username/obsidian-edge-tts-plugin/issues)
+![GitHub forks](https://img.shields.io/github/forks/travisvn/obsidian-edge-tts?style=social)
+![GitHub last commit](https://img.shields.io/github/last-commit/travisvn/obsidian-edge-tts?color=red)
+![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2Ftravisvn%2Fobsidian-edge-tts&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false)
+[![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://img.shields.io/github/sponsors/travisvn)
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+## Table of Contents
 
-**Note:** The Obsidian API is still in early alpha and is subject to change at any time!
+- [Overview](#overview)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Settings](#settings)
+- [Contributing](#contributing)
+- [License](#license)
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open Sample Modal" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+## Overview
 
-## First time developing plugins?
+The **Obsidian Edge TTS Plugin** is a community plugin for [Obsidian](https://obsidian.md/) that allows you to read your notes aloud using Microsoft's Edge TTS API. It supports a variety of voices and locales, making it an excellent tool for users who want to listen to their notes while multitasking or to improve accessibility.
 
-Quick starting guide for new plugin devs:
+## Features
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+- Read selected text or entire notes aloud.
+- Choose from a list of top voices or specify a custom voice.
+- Toggle optional notices for playback status.
+- Enable/disable a ribbon icon for quick access.
+- Listen to voice samples before selecting a voice (via [tts.travisvn.com](https://tts.travisvn.com)).
 
-## Releasing new releases
+## Installation
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+1. Open Obsidian.
+2. Go to **Settings** → **Community Plugins**.
+3. Search for **Obsidian Edge TTS Plugin**.
+4. Click **Install** and then **Enable**.
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+Alternatively, you can manually download the latest release from [GitHub Releases](https://github.com/travisvn/obsidian-edge-tts-plugin/releases).
 
-## Adding your plugin to the community plugin list
+## Usage
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+1. Select the text in your note that you want to be read aloud.
+2. Press the hotkey `Ctrl + R` (or `Cmd + R` on macOS), or use the **Read Note Aloud** command from the command palette.
+3. You can also click the ribbon icon (if enabled) to read the current note.
 
-## How to use
+## Settings
 
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
+To access the plugin settings:
 
-## Manually installing the plugin
+1. Go to **Settings** → **Community Plugins** → **Obsidian Edge TTS Plugin**.
+2. Configure the following options:
+   - **Select Voice**: Choose from a list of top voices.
+   - **Custom Voice**: Manually enter a custom voice.
+   - **Show Ribbon Icon**: Enable or disable the ribbon icon.
+   - **Show Notices**: Toggle notices for playback status and errors.
+   - **Voice Samples**: Visit [tts.travisvn.com](https://tts.travisvn.com) to sample available voices.
+   
+   ![Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBokqnYgsditb0yMYmKjvXxwOnIVk1aZ9pBRNs7)
 
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
+If you like this project, please [give it a star on GitHub](https://github.com/travisvn/obsidian-edge-tts-plugin)!
 
-## Improve code quality with eslint (optional)
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- To use eslint with this project, make sure to install eslint from terminal:
-  - `npm install -g eslint`
-- To use eslint to analyze this project use this command:
-  - `eslint main.ts`
-  - eslint will then create a report with suggestions for code improvement by file and line number.
-- If your source code is in a folder, such as `src`, you can use eslint with this command to analyze all files in that folder:
-  - `eslint .\src\`
+## Contributing
 
-## Funding URL
+Contributions are welcome! If you'd like to contribute, please:
 
-You can include funding URLs where people who use your plugin can financially support it.
-
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
-
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
-```
-
-If you have multiple URLs, you can also do:
-
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
-```
-
-## API Documentation
-
-See https://github.com/obsidianmd/obsidian-api
+1. Fork the repository.
+2. Create a new branch (`git checkout -b feature/your-feature`).
+3. Make your changes.
+4. Commit and push your changes (`git commit -am 'Add a new feature'`).
+5. Open a pull request.
