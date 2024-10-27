@@ -1,8 +1,8 @@
 # Obsidian Edge TTS Plugin 🗣️
 
-[![GitHub release](https://img.shields.io/github/v/release/travisvn/obsidian-edge-tts-plugin)](https://github.com/travisvn/obsidian-edge-tts-plugin/releases)
+[![GitHub release](https://img.shields.io/github/v/release/travisvn/obsidian-edge-tts)](https://github.com/travisvn/obsidian-edge-tts/releases)
 ![GitHub stars](https://img.shields.io/github/stars/travisvn/obsidian-edge-tts?style=social/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/your-username/obsidian-edge-tts-plugin)](https://github.com/your-username/obsidian-edge-tts-plugin/issues)
+[![GitHub issues](https://img.shields.io/github/issues/your-username/obsidian-edge-tts)](https://github.com/your-username/obsidian-edge-tt/issues)
 ![GitHub forks](https://img.shields.io/github/forks/travisvn/obsidian-edge-tts?style=social)
 ![GitHub last commit](https://img.shields.io/github/last-commit/travisvn/obsidian-edge-tts?color=red)
 ![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2Ftravisvn%2Fobsidian-edge-tts&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false)
@@ -34,7 +34,7 @@ The **Obsidian Edge TTS Plugin** is a community plugin for [Obsidian](https://ob
 
 1. Open Obsidian.
 2. Go to **Settings** → **Community Plugins**.
-3. Search for **Obsidian Edge TTS Plugin**.
+3. Search for **Edge TTS**.
 4. Click **Install** and then **Enable**.
 
 Alternatively, you can manually download the latest release from [GitHub Releases](https://github.com/travisvn/obsidian-edge-tts/releases).
@@ -49,7 +49,7 @@ Alternatively, you can manually download the latest release from [GitHub Release
 
 To access the plugin settings:
 
-1. Go to **Settings** → **Community Plugins** → **Obsidian Edge TTS Plugin**.
+1. Go to **Settings** → **Community Plugins** → **Edge TTS**.
 2. Configure the following options:
    - **Select Voice**: Choose from a list of top voices.
    - **Custom Voice**: Manually enter a custom voice.
@@ -59,7 +59,7 @@ To access the plugin settings:
    
    ![Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBokqnYgsditb0yMYmKjvXxwOnIVk1aZ9pBRNs7)
 
-If you like this project, please [give it a star on GitHub](https://github.com/travisvn/obsidian-edge-tts-plugin)!
+If you like this project, please [give it a star on GitHub](https://github.com/travisvn/obsidian-edge-tts)!
 
 ## Contributing
 
