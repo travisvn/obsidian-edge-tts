@@ -183,7 +183,7 @@ class EdgeTTSPluginSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl('h2', { text: 'Edge TTS Plugin Settings' });
+		containerEl.createEl('h2', { text: 'Edge TTS Plugin Options' });
 
 		// Add a text notice about sampling voices
 		const inbetweenInfo = containerEl.createEl('div', {
