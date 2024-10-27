@@ -37,7 +37,7 @@ The **Obsidian Edge TTS Plugin** is a community plugin for [Obsidian](https://ob
 3. Search for **Obsidian Edge TTS Plugin**.
 4. Click **Install** and then **Enable**.
 
-Alternatively, you can manually download the latest release from [GitHub Releases](https://github.com/travisvn/obsidian-edge-tts-plugin/releases).
+Alternatively, you can manually download the latest release from [GitHub Releases](https://github.com/travisvn/obsidian-edge-tts/releases).
 
 ## Usage
 
