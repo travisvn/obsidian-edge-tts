@@ -2,7 +2,7 @@
 
 [![GitHub release](https://img.shields.io/github/v/release/travisvn/obsidian-edge-tts)](https://github.com/travisvn/obsidian-edge-tts/releases)
 ![GitHub stars](https://img.shields.io/github/stars/travisvn/obsidian-edge-tts?style=social/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/your-username/obsidian-edge-tts)](https://github.com/your-username/obsidian-edge-tt/issues)
+[![GitHub issues](https://img.shields.io/github/issues/your-username/obsidian-edge-tts)](https://github.com/your-username/obsidian-edge-tts/issues)
 ![GitHub forks](https://img.shields.io/github/forks/travisvn/obsidian-edge-tts?style=social)
 ![GitHub last commit](https://img.shields.io/github/last-commit/travisvn/obsidian-edge-tts?color=red)
 ![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2Ftravisvn%2Fobsidian-edge-tts&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false)
