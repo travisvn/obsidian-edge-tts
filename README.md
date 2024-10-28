@@ -41,7 +41,7 @@ Alternatively, you can manually download the latest release from [GitHub Release
 ## Usage
 
 1. Select the text in your note that you want to be read aloud.
-2. Press the hotkey `Ctrl + R` (or `Cmd + R` on macOS), or use the **Read Note Aloud** command from the command palette.
+2. ~Press the hotkey `Ctrl + R` (or `Cmd + R` on macOS), or~ _(hotkey not enabled by default anymore)_ use the **Read Note Aloud** command from the command palette.
 3. You can also click the ribbon icon (if enabled) to read the current note.
 
 ## Settings
