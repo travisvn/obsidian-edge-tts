@@ -1,5 +1,5 @@
 import { Plugin, MarkdownView, Notice, PluginSettingTab, Setting } from 'obsidian';
-import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts-browserify';
+import { EdgeTTSClient, OUTPUT_FORMAT } from 'edge-tts-client';
 import { filterMarkdown } from 'utils';
 
 // Top voices to be displayed in the dropdown
@@ -91,7 +91,7 @@ export default class EdgeTTSPlugin extends Plugin {
 							new Notice('Processing text-to-speech...');
 						}
 
-						const tts = new MsEdgeTTS();
+						const tts = new EdgeTTSClient();
 						const voiceToUse = this.settings.customVoice.trim() || this.settings.selectedVoice;
 						await tts.setMetadata(voiceToUse, OUTPUT_FORMAT.WEBM_24KHZ_16BIT_MONO_OPUS);
 
@@ -101,7 +101,7 @@ export default class EdgeTTSPlugin extends Plugin {
 						// eslint-disable-next-line prefer-const
 						let audioBuffer: Uint8Array[] = [];
 
-						readable.on('data', (data) => {
+						readable.on('data', (data: Uint8Array) => {
 							audioBuffer.push(data);
 						});
 

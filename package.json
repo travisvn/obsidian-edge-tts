@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-edge-tts",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "This is a TTS plugin for Obsidian (https://obsidian.md).",
 	"main": "main.js",
 	"scripts": {
@@ -27,6 +27,6 @@
 		"typescript": "^5.6.3"
 	},
 	"dependencies": {
-		"msedge-tts-browserify": "^1.4.1"
+		"edge-tts-client": "^1.0.1"
 	}
 }
