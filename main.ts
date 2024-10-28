@@ -54,8 +54,7 @@ export default class EdgeTTSPlugin extends Plugin {
 		this.addCommand({
 			id: 'read-note-aloud',
 			name: 'Read Note Aloud',
-			callback: () => this.readNoteAloud(),
-			hotkeys: [{ modifiers: ["Mod"], key: "R" }]
+			callback: () => this.readNoteAloud()
 		});
 	}
 
