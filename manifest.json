@@ -1,7 +1,7 @@
 {
 	"id": "edge-tts",
 	"name": "Edge TTS",
-	"version": "1.0.4",
+	"version": "1.0.5",
 	"minAppVersion": "0.15.0",
 	"description": "Read notes aloud using Microsoft Edge Read Aloud API (free, high quality text-to-speech).",
 	"author": "Travis",
