@@ -1,16 +1,21 @@
-.default-style {
-	text-align: left;
-}
-
-.setting-item-description {
-	padding-bottom: 10px;
-}
-
-.inbetween-info-div {
+.edge-tts-info-div {
 	padding-bottom: 10px;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;
 	text-align: center;
+}
+
+.edge-tts-star-section {
+	padding-bottom: 10px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	text-align: center;
+}
+
+.edge-tts-star-message {
+	font-size: x-large;
 }

@@ -1,6 +1,6 @@
-import { Plugin, MarkdownView, Notice, PluginSettingTab, Setting } from 'obsidian';
+import { Plugin, MarkdownView, Notice, PluginSettingTab, Setting, Editor, MarkdownFileInfo } from 'obsidian';
 import { EdgeTTSClient, OUTPUT_FORMAT } from 'edge-tts-client';
-import { filterMarkdown } from 'utils';
+import { filterMarkdown } from 'src/utils';
 
 // Top voices to be displayed in the dropdown
 const TOP_VOICES = [
@@ -20,14 +20,12 @@ const TOP_VOICES = [
 interface EdgeTTSPluginSettings {
 	selectedVoice: string;
 	customVoice: string;
-	showRibbonIcon: boolean;
 	showNotices: boolean;
 }
 
 const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
 	selectedVoice: 'en-US-ChristopherNeural',
 	customVoice: '',
-	showRibbonIcon: true,
 	showNotices: false,
 };
 
@@ -37,7 +35,9 @@ export default class EdgeTTSPlugin extends Plugin {
 	audioContext: AudioContext | null = null;
 
 	async onload() {
-		console.log('Loading Obsidian Edge TTS Plugin');
+		if (process.env.NODE_ENV === 'development') {
+			console.log('Loading Obsidian Edge TTS Plugin');
+		}
 
 		// Load settings
 		await this.loadSettings();
@@ -45,16 +45,15 @@ export default class EdgeTTSPlugin extends Plugin {
 		// Add settings tab
 		this.addSettingTab(new EdgeTTSPluginSettingTab(this.app, this));
 
-		// Add the ribbon icon if enabled
-		if (this.settings.showRibbonIcon) {
-			this.addPluginRibbonIcon();
-		}
+		this.addPluginRibbonIcon();
 
 		// Add command to read notes aloud
 		this.addCommand({
 			id: 'read-note-aloud',
-			name: 'Read Note Aloud',
-			callback: () => this.readNoteAloud()
+			name: 'Read note aloud',
+			editorCallback: (editor, view) => {
+				this.readNoteAloud(editor, view);
+			}
 		});
 	}
 
@@ -63,7 +62,7 @@ export default class EdgeTTSPlugin extends Plugin {
 			this.ribbonIconEl.remove();
 		}
 
-		this.ribbonIconEl = this.addRibbonIcon('audio-lines', 'Read Note Aloud', () => {
+		this.ribbonIconEl = this.addRibbonIcon('audio-lines', 'Read note aloud', () => {
 			this.readNoteAloud();
 		});
 	}
@@ -75,10 +74,15 @@ export default class EdgeTTSPlugin extends Plugin {
 		}
 	}
 
-	async readNoteAloud() {
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (view) {
-			const editor = view.editor;
+	async readNoteAloud(editor?: Editor, viewInput?: MarkdownView | MarkdownFileInfo) {
+		// Fallback to active Markdown view if not provided
+		const view = viewInput ?? this.app.workspace.getActiveViewOfType(MarkdownView);
+
+		if (!editor && view) {
+			editor = view.editor;
+		}
+
+		if (editor && view) {
 			const selectedText = editor.getSelection() || editor.getValue();
 
 			if (selectedText.trim()) {
@@ -120,7 +124,9 @@ export default class EdgeTTSPlugin extends Plugin {
 									}
 								};
 
-								console.log('Audio playback started');
+								if (process.env.NODE_ENV === 'development') {
+									console.log('Audio playback started');
+								}
 							} catch (decodeError) {
 								console.error('Error decoding audio:', decodeError);
 								this.cleanupAudioContext();
@@ -144,6 +150,10 @@ export default class EdgeTTSPlugin extends Plugin {
 				if (this.settings.showNotices) {
 					new Notice('No text selected or available.');
 				}
+			}
+		} else {
+			if (this.settings.showNotices) {
+				new Notice('No active editor or Markdown view.');
 			}
 		}
 	}
@@ -182,11 +192,9 @@ class EdgeTTSPluginSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl('h2', { text: 'Edge TTS Plugin Options' });
-
 		// Add a text notice about sampling voices
 		const inbetweenInfo = containerEl.createEl('div', {
-			cls: 'inbetween-info-div'
+			cls: 'edge-tts-info-div'
 		})
 
 		const infoText = document.createElement('p');
@@ -200,7 +208,7 @@ class EdgeTTSPluginSettingTab extends PluginSettingTab {
 
 		// Dropdown for top voices
 		new Setting(containerEl)
-			.setName('Select Voice')
+			.setName('Select voice')
 			.setDesc('Choose from the top voices.')
 			.setClass('default-style')
 			.addDropdown(dropdown => {
@@ -225,7 +233,7 @@ class EdgeTTSPluginSettingTab extends PluginSettingTab {
 
 		// Text input for custom voice
 		new Setting(containerEl)
-			.setName('Custom Voice')
+			.setName('Custom voice')
 			.setDesc(patternFragment)
 			.addText(text => {
 				text.setPlaceholder('e.g., fr-FR-HenriNeural');
@@ -236,27 +244,9 @@ class EdgeTTSPluginSettingTab extends PluginSettingTab {
 				});
 			});
 
-		// Ribbon icon toggle setting
-		new Setting(containerEl)
-			.setName('Show Ribbon Icon')
-			.setDesc('Toggle the ribbon icon for quick access.')
-			.addToggle(toggle => {
-				toggle.setValue(this.plugin.settings.showRibbonIcon);
-				toggle.onChange(async (value) => {
-					this.plugin.settings.showRibbonIcon = value;
-					await this.plugin.saveSettings();
-
-					if (value) {
-						this.plugin.addPluginRibbonIcon();
-					} else {
-						this.plugin.removePluginRibbonIcon();
-					}
-				});
-			});
-
 		// Notice toggle setting
 		new Setting(containerEl)
-			.setName('Show Notices')
+			.setName('Show notices')
 			.setDesc('Toggle notices for processing status and errors.')
 			.addToggle(toggle => {
 				toggle.setValue(this.plugin.settings.showNotices);
@@ -266,10 +256,10 @@ class EdgeTTSPluginSettingTab extends PluginSettingTab {
 				});
 			});
 
-		const starContainer = containerEl.createEl('div', { cls: 'star-section' });
-		starContainer.createEl('h3', {
+		const starContainer = containerEl.createEl('div', { cls: 'edge-tts-star-section' });
+		starContainer.createEl('p', {
 			text: 'Please star this project on GitHub if you find it useful ⭐️',
-			cls: 'star-message'
+			cls: 'edge-tts-star-message'
 		});
 
 		starContainer.createEl('a', {
