@@ -25,6 +25,7 @@ The **Obsidian Edge TTS Plugin** is a community plugin for [Obsidian](https://ob
 
 - Read selected text or entire notes aloud.
 - Choose from a list of top voices or specify a custom voice.
+- Adjust playback speed of voice over.
 - Toggle optional notices for playback status.
 - Listen to voice samples before selecting a voice (via [tts.travisvn.com](https://tts.travisvn.com)).
 
@@ -49,12 +50,13 @@ To access the plugin settings:
 
 1. Go to **Settings** → **Community Plugins** → **Edge TTS**.
 2. Configure the following options:
-   - **Select Voice**: Choose from a list of top voices.
-   - **Custom Voice**: Manually enter a custom voice.
-   - **Show Notices**: Toggle notices for playback status and errors.
+   - **Select voice**: Choose from a list of top voices.
+   - **Custom voice**: Manually enter a custom voice.
+   - **Playback speed**: Adjust playback speed multiplier.
+   - **Show notices**: Toggle notices for playback status and errors.
    - **Voice Samples**: Visit [tts.travisvn.com](https://tts.travisvn.com) to sample available voices.
    
-   ![Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBoS3F3GADxz6pI1fUg8jNuODH2ab5VKdc7LoeF)
+   ![Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBo1S407Nyx69LZcDRoE7SrehaCU2JMNgdb0YlO)
 
 If you like this project, please [give it a star on GitHub](https://github.com/travisvn/obsidian-edge-tts)!
 
