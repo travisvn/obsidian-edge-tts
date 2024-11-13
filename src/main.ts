@@ -1,6 +1,6 @@
 import { Plugin, MarkdownView, Notice, PluginSettingTab, Setting, Editor, MarkdownFileInfo } from 'obsidian';
 import { EdgeTTSClient, OUTPUT_FORMAT } from 'edge-tts-client';
-import { filterMarkdown } from 'src/utils';
+import { filterFrontmatter, filterMarkdown } from 'src/utils';
 
 // Top voices to be displayed in the dropdown
 const TOP_VOICES = [
@@ -86,7 +86,7 @@ export default class EdgeTTSPlugin extends Plugin {
 			const selectedText = editor.getSelection() || editor.getValue();
 
 			if (selectedText.trim()) {
-				const cleanText = filterMarkdown(selectedText);
+				const cleanText = filterMarkdown(filterFrontmatter(selectedText));
 
 				if (cleanText.trim()) {
 					try {

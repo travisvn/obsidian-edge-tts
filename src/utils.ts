@@ -1,4 +1,19 @@
 /* eslint-disable no-useless-escape */
+
+/**
+ * Filters out the frontmatter from a Markdown text.
+ * Frontmatter is defined as a block of YAML enclosed by `---` or `...` at the start of the file.
+ * @param text - The Markdown text from which to remove frontmatter.
+ * @returns The text without the frontmatter block.
+ */
+export function filterFrontmatter(text: string): string {
+  // Define the regular expression for frontmatter blocks
+  const frontmatterRegex = /^(---|\.\.\.)([\s\S]*?)\1\n?/;
+
+  // Remove frontmatter if it exists
+  return text.replace(frontmatterRegex, '').trim();
+}
+
 export function filterMarkdown(text: string): string {
   // Remove URLs
   text = text.replace(/https?:\/\/[^\s]+/g, '');
