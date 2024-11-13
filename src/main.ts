@@ -234,7 +234,7 @@ class EdgeTTSPluginSettingTab extends PluginSettingTab {
 		patternFragment.append('(OPTIONAL) Enter custom voice. Visit ');
 		patternFragment.append(link);
 		patternFragment.append(' for list of options. ');
-		patternFragment.append('Leave empty to use the selected voice above.')
+		patternFragment.append('Leave empty to use the selected voice above.');
 
 		// Text input for custom voice
 		new Setting(containerEl)
