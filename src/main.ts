@@ -1,5 +1,5 @@
 import { Plugin, MarkdownView, Notice, PluginSettingTab, Setting, Editor, MarkdownFileInfo } from 'obsidian';
-import { EdgeTTSClient, OUTPUT_FORMAT } from 'edge-tts-client';
+import { EdgeTTSClient, OUTPUT_FORMAT, ProsodyOptions } from 'edge-tts-client';
 import { filterFrontmatter, filterMarkdown } from 'src/utils';
 
 // Top voices to be displayed in the dropdown
@@ -20,12 +20,14 @@ const TOP_VOICES = [
 interface EdgeTTSPluginSettings {
 	selectedVoice: string;
 	customVoice: string;
+	playbackSpeed: number;
 	showNotices: boolean;
 }
 
 const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
 	selectedVoice: 'en-US-ChristopherNeural',
 	customVoice: '',
+	playbackSpeed: 1.2,
 	showNotices: false,
 };
 
@@ -98,7 +100,10 @@ export default class EdgeTTSPlugin extends Plugin {
 						const voiceToUse = this.settings.customVoice.trim() || this.settings.selectedVoice;
 						await tts.setMetadata(voiceToUse, OUTPUT_FORMAT.WEBM_24KHZ_16BIT_MONO_OPUS);
 
-						const readable = tts.toStream(cleanText);
+						const prosodyOptions = new ProsodyOptions();
+						prosodyOptions.rate = this.settings.playbackSpeed;
+
+						const readable = tts.toStream(cleanText, prosodyOptions);
 						this.audioContext = new AudioContext();
 						const source = this.audioContext.createBufferSource();
 						// eslint-disable-next-line prefer-const
@@ -242,6 +247,21 @@ class EdgeTTSPluginSettingTab extends PluginSettingTab {
 					this.plugin.settings.customVoice = value;
 					await this.plugin.saveSettings();
 				});
+			});
+
+		// Slider for playback speed
+		new Setting(containerEl)
+			.setName('Playback speed')
+			.setDesc('Change playback speed multiplier (ex. 0.5 = 0.5x playback speed (50% speed)). Default = 1.2')
+			.addSlider(slider => {
+				slider.setLimits(0.5, 2.0, 0.1);
+				slider.setValue(this.plugin.settings.playbackSpeed);
+				slider.onChange(async (value) => {
+					this.plugin.settings.playbackSpeed = value;
+					await this.plugin.saveSettings();
+				});
+				slider.setDynamicTooltip();
+				slider.showTooltip();
 			});
 
 		// Notice toggle setting
