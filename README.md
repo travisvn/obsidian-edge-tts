@@ -41,8 +41,9 @@ Alternatively, you can manually download the latest release from [GitHub Release
 ## Usage
 
 1. Select the text in your note that you want to be read aloud.
-2. ~Press the hotkey `Ctrl + R` (or `Cmd + R` on macOS), or~ _(hotkey not enabled by default anymore)_ use the **Read Note Aloud** command from the command palette.
+2. ~Press the hotkey `Ctrl + R` (or `Cmd + R` on macOS), or~ _(hotkey not enabled by default anymore)_ use the **Read note aloud** command from the command palette.
 3. You can also click the ribbon icon (if enabled) to read the current note.
+4. ✨ _New_ ✨ Playback button in the status bar — this both starts a narration and then allows you to pause or resume once it's started
 
 ## Settings
 
@@ -54,9 +55,10 @@ To access the plugin settings:
    - **Custom voice**: Manually enter a custom voice.
    - **Playback speed**: Adjust playback speed multiplier.
    - **Show notices**: Toggle notices for playback status and errors.
+   - **Show status bar button**: Toggle playback button in status bar.
    - **Voice Samples**: Visit [tts.travisvn.com](https://tts.travisvn.com) to sample available voices.
    
-   ![Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBo1S407Nyx69LZcDRoE7SrehaCU2JMNgdb0YlO)
+   ![Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBoL9dM8ZtESTPZ2dEUjVzlDx8yBibtqOcIs46M)
 
 If you like this project, please [give it a star on GitHub](https://github.com/travisvn/obsidian-edge-tts)!
 
