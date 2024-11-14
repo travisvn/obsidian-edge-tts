@@ -1,4 +1,4 @@
-import { Plugin, MarkdownView, Notice, PluginSettingTab, Setting, Editor, MarkdownFileInfo } from 'obsidian';
+import { Plugin, MarkdownView, Notice, PluginSettingTab, Setting, Editor, MarkdownFileInfo, setIcon, setTooltip } from 'obsidian';
 import { EdgeTTSClient, OUTPUT_FORMAT, ProsodyOptions } from 'edge-tts-client';
 import { filterFrontmatter, filterMarkdown } from 'src/utils';
 
@@ -22,19 +22,25 @@ interface EdgeTTSPluginSettings {
 	customVoice: string;
 	playbackSpeed: number;
 	showNotices: boolean;
+	showStatusBarButton: boolean;
 }
 
 const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
 	selectedVoice: 'en-US-ChristopherNeural',
 	customVoice: '',
 	playbackSpeed: 1.2,
-	showNotices: false,
+	showNotices: true,
+	showStatusBarButton: true,
 };
 
 export default class EdgeTTSPlugin extends Plugin {
 	settings: EdgeTTSPluginSettings;
 	ribbonIconEl: HTMLElement | null = null;
+	statusBarEl: HTMLElement | null = null;
 	audioContext: AudioContext | null = null;
+	audioSource: AudioBufferSourceNode | null = null;
+	isPaused = false;
+	pausedAt = 0;
 
 	async onload() {
 		if (process.env.NODE_ENV === 'development') {
@@ -49,6 +55,8 @@ export default class EdgeTTSPlugin extends Plugin {
 
 		this.addPluginRibbonIcon();
 
+		if (this.settings.showStatusBarButton) this.initializeStatusBar();
+
 		// Add command to read notes aloud
 		this.addCommand({
 			id: 'read-note-aloud',
@@ -57,6 +65,44 @@ export default class EdgeTTSPlugin extends Plugin {
 				this.readNoteAloud(editor, view);
 			}
 		});
+	}
+
+	initializeStatusBar() {
+		this.statusBarEl = this.addStatusBarItem();
+		this.updateStatusBar();
+	}
+
+	removeStatusBarButton(): void {
+		if (this.statusBarEl) {
+			this.statusBarEl?.remove();
+			this.statusBarEl = null;
+		}
+	}
+
+	updateStatusBar(withControls = false) {
+		if (!this.statusBarEl) return;
+		if (!this.settings.showStatusBarButton) {
+			this.removeStatusBarButton();
+			return;
+		}
+
+		this.statusBarEl.empty();
+
+		if (withControls) {
+			// Add pause/play button
+			const pausePlayButton = createEl('span', { cls: 'edge-tts-status-bar-control' });
+			setTooltip(pausePlayButton, this.isPaused ? 'Resume' : 'Pause', { placement: 'top' })
+			setIcon(pausePlayButton, this.isPaused ? 'circle-play' : 'circle-pause');
+			pausePlayButton.onclick = () => (this.isPaused ? this.resumePlayback() : this.pausePlayback());
+			this.statusBarEl.appendChild(pausePlayButton);
+		} else {
+			// Add icon to read note aloud
+			const readAloudStatusBar = createEl('span', { cls: 'edge-tts-status-bar-control' });
+			setTooltip(readAloudStatusBar, 'Read note aloud', { placement: 'top' })
+			setIcon(readAloudStatusBar, 'audio-lines');
+			readAloudStatusBar.onclick = () => this.readNoteAloud();
+			this.statusBarEl.appendChild(readAloudStatusBar);
+		}
 	}
 
 	addPluginRibbonIcon(): void {
@@ -77,12 +123,14 @@ export default class EdgeTTSPlugin extends Plugin {
 	}
 
 	async readNoteAloud(editor?: Editor, viewInput?: MarkdownView | MarkdownFileInfo) {
-		// Fallback to active Markdown view if not provided
+		if (this.audioContext || this.audioSource) {
+			// Stop any ongoing narration before starting a new one
+			this.stopPlayback();
+		}
+
 		const view = viewInput ?? this.app.workspace.getActiveViewOfType(MarkdownView);
 
-		if (!editor && view) {
-			editor = view.editor;
-		}
+		if (!editor && view) editor = view.editor;
 
 		if (editor && view) {
 			const selectedText = editor.getSelection() || editor.getValue();
@@ -92,9 +140,8 @@ export default class EdgeTTSPlugin extends Plugin {
 
 				if (cleanText.trim()) {
 					try {
-						if (this.settings.showNotices) {
-							new Notice('Processing text-to-speech...');
-						}
+						if (this.settings.showNotices) new Notice('Processing text-to-speech...');
+						this.updateStatusBar(true);
 
 						const tts = new EdgeTTSClient();
 						const voiceToUse = this.settings.customVoice.trim() || this.settings.selectedVoice;
@@ -105,61 +152,65 @@ export default class EdgeTTSPlugin extends Plugin {
 
 						const readable = tts.toStream(cleanText, prosodyOptions);
 						this.audioContext = new AudioContext();
-						const source = this.audioContext.createBufferSource();
-						// eslint-disable-next-line prefer-const
-						let audioBuffer: Uint8Array[] = [];
+						this.audioSource = this.audioContext.createBufferSource();
+						const audioBuffer: Uint8Array[] = [];
 
 						readable.on('data', (data: Uint8Array) => {
 							audioBuffer.push(data);
 						});
 
 						readable.on('end', async () => {
-							try {
-								const completeBuffer = new Uint8Array(Buffer.concat(audioBuffer));
-								const audioBufferDecoded = await this.audioContext!.decodeAudioData(completeBuffer.buffer);
+							const completeBuffer = new Uint8Array(Buffer.concat(audioBuffer));
+							const audioBufferDecoded = await this.audioContext!.decodeAudioData(completeBuffer.buffer);
 
-								source.buffer = audioBufferDecoded;
-								source.connect(this.audioContext!.destination);
-								source.start(0);
+							this.audioSource!.buffer = audioBufferDecoded;
+							this.audioSource!.connect(this.audioContext!.destination);
+							this.audioSource!.start(0);
 
-								source.onended = () => {
-									this.cleanupAudioContext();
-									if (this.settings.showNotices) {
-										new Notice('Finished reading aloud.');
-									}
-								};
-
-								if (process.env.NODE_ENV === 'development') {
-									console.log('Audio playback started');
-								}
-							} catch (decodeError) {
-								console.error('Error decoding audio:', decodeError);
+							this.audioSource!.onended = () => {
 								this.cleanupAudioContext();
-								if (this.settings.showNotices) {
-									new Notice('Failed to decode audio.');
-								}
-							}
+								this.updateStatusBar();
+								if (this.settings.showNotices) new Notice('Finished reading aloud.');
+							};
 						});
 					} catch (error) {
 						console.error('Error reading note aloud:', error);
-						if (this.settings.showNotices) {
-							new Notice('Failed to read note aloud.');
-						}
+						this.updateStatusBar();
+						if (this.settings.showNotices) new Notice('Failed to read note aloud.');
 					}
 				} else {
-					if (this.settings.showNotices) {
-						new Notice('No readable text after filtering.');
-					}
+					if (this.settings.showNotices) new Notice('No readable text after filtering.');
 				}
 			} else {
-				if (this.settings.showNotices) {
-					new Notice('No text selected or available.');
-				}
+				if (this.settings.showNotices) new Notice('No text selected or available.');
 			}
 		} else {
-			if (this.settings.showNotices) {
-				new Notice('No active editor or Markdown view.');
-			}
+			if (this.settings.showNotices) new Notice('No active editor or Markdown view.');
+		}
+	}
+
+	pausePlayback() {
+		if (this.audioContext && this.audioSource) {
+			this.isPaused = true;
+			this.pausedAt = this.audioContext.currentTime;
+			this.audioContext.suspend();
+			this.updateStatusBar(true);
+		}
+	}
+
+	resumePlayback() {
+		if (this.audioContext) {
+			this.isPaused = false;
+			this.audioContext.resume();
+			this.updateStatusBar(true);
+		}
+	}
+
+	stopPlayback() {
+		if (this.audioSource) {
+			this.audioSource.stop();
+			this.cleanupAudioContext();
+			this.updateStatusBar();
 		}
 	}
 
@@ -168,6 +219,9 @@ export default class EdgeTTSPlugin extends Plugin {
 			this.audioContext.close();
 			this.audioContext = null;
 		}
+		this.audioSource = null;
+		this.isPaused = false;
+		this.pausedAt = 0;
 	}
 
 	async loadSettings() {
@@ -182,6 +236,7 @@ export default class EdgeTTSPlugin extends Plugin {
 		console.log('Unloading Obsidian Edge TTS Plugin');
 		this.removePluginRibbonIcon();
 		this.cleanupAudioContext();
+		this.statusBarEl?.remove();
 	}
 }
 
@@ -273,6 +328,23 @@ class EdgeTTSPluginSettingTab extends PluginSettingTab {
 				toggle.onChange(async (value) => {
 					this.plugin.settings.showNotices = value;
 					await this.plugin.saveSettings();
+				});
+			});
+
+		// Status toggle setting
+		new Setting(containerEl)
+			.setName('Show status bar button')
+			.setDesc('Toggle playback button in the status bar.')
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.settings.showStatusBarButton);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.showStatusBarButton = value;
+					await this.plugin.saveSettings();
+					if (value) {
+						this.plugin.initializeStatusBar();
+					} else {
+						this.plugin.removeStatusBarButton();
+					}
 				});
 			});
 
