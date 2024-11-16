@@ -1,21 +1,16 @@
 # Obsidian Edge TTS Plugin 🗣️
 
-[![GitHub release](https://img.shields.io/github/v/release/travisvn/obsidian-edge-tts)](https://github.com/travisvn/obsidian-edge-tts/releases)
-![GitHub stars](https://img.shields.io/github/stars/travisvn/obsidian-edge-tts?style=social)
-[![GitHub issues](https://img.shields.io/github/issues/travisvn/obsidian-edge-tts)](https://github.com/travisvn/obsidian-edge-tts/issues)
-![GitHub last commit](https://img.shields.io/github/last-commit/travisvn/obsidian-edge-tts?color=red)
-![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2Ftravisvn%2Fobsidian-edge-tts&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false)
-[![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://img.shields.io/github/sponsors/travisvn)
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Settings](#settings)
-- [Contributing](#contributing)
-- [License](#license)
+<p align="center">
+	<a href="https://github.com/travisvn/obsidian-edge-tts">
+		<img src="https://img.shields.io/github/stars/travisvn/obsidian-edge-tts?style=social" alt="GitHub stars"></a>
+    <img src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=%23483699&label=downloads&query=%24%5B%27edge-tts%27%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json" alt="Obsidian downloads">
+	<a href="https://github.com/travisvn/obsidian-edge-tts/releases">
+		<img src="https://img.shields.io/github/v/release/travisvn/obsidian-edge-tts" alt="GitHub release"></a>
+	<a href="https://github.com/travisvn/obsidian-edge-tts/issues">
+	  <img src="https://img.shields.io/github/issues/travisvn/obsidian-edge-tts" alt="GitHub issues"></a>
+	<img src="https://img.shields.io/github/last-commit/travisvn/obsidian-edge-tts?color=red" alt="GitHub last commit">
+	<img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2Ftravisvn%2Fobsidian-edge-tts&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false" alt="Hits">
+</p>
 
 ## Overview
 
