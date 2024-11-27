@@ -42,6 +42,7 @@ Alternatively, you can manually download the latest release from [GitHub Release
 - Use the **Read note aloud** command from the command palette
 	- _or_  Click the ribbon icon (if enabled)
 	- _or_  ✨ _New_ ✨ Playback button in the status bar — this both starts a narration and then allows you to pause or resume once it's started
+	- _or_  Right-click on a file and select `Read note aloud`
 
 ## Settings
 
@@ -56,6 +57,6 @@ To access the plugin settings:
    - **Show status bar button**: Toggle playback button in status bar.
    - **Voice Samples**: Visit [tts.travisvn.com](https://tts.travisvn.com) to sample available voices.
    
-   ![Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBoL9dM8ZtESTPZ2dEUjVzlDx8yBibtqOcIs46M)
+   ![Obsidian Edge TTS Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBocFQodQ5Yrp8QZkBUquOFL65GVCWh4za1Ij2l)
 
 ## If you like this project, please [give it a star on GitHub](https://github.com/travisvn/obsidian-edge-tts) ⭐️
