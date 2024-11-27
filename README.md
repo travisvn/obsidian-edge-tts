@@ -25,6 +25,7 @@ The **Obsidian Edge TTS Plugin** is a community plugin for [Obsidian](https://ob
 - Choose from a list of top voices or specify a custom voice
 - Adjust playback speed of voice over
 - Toggle optional notices for playback status
+- Option to generate mp3 file and embed it directly in note
 - Listen to voice samples before selecting a voice (via [tts.travisvn.com](https://tts.travisvn.com))
 
 ## Installation
@@ -41,8 +42,9 @@ Alternatively, you can manually download the latest release from [GitHub Release
 - Open the note you want to read aloud (or select the text)
 - Use the **Read note aloud** command from the command palette
 	- _or_  Click the ribbon icon (if enabled)
-	- _or_  ✨ _New_ ✨ Playback button in the status bar — this both starts a narration and then allows you to pause or resume once it's started
+	- _or_  Playback button in the status bar — this both starts a narration and then allows you to pause or resume once it's started
 	- _or_  Right-click on a file and select `Read note aloud`
+- ✨ _New_ ✨ Right-click on a file and select `Generate MP3` to save the narration to an mp3 and embed it in the note
 
 ## Settings
 
@@ -55,8 +57,9 @@ To access the plugin settings:
    - **Playback speed**: Adjust playback speed multiplier.
    - **Show notices**: Toggle notices for playback status and errors.
    - **Show status bar button**: Toggle playback button in status bar.
+   - **Generate MP3**: Toggle settings related to the `Generate MP3` menu option.
    - **Voice Samples**: Visit [tts.travisvn.com](https://tts.travisvn.com) to sample available voices.
    
-   ![Obsidian Edge TTS Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBocFQodQ5Yrp8QZkBUquOFL65GVCWh4za1Ij2l)
+   ![Obsidian Edge TTS Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBoUkXv9BIyF8jY32HKoB45tuela0IdhLQ7JTvc)
 
 ## If you like this project, please [give it a star on GitHub](https://github.com/travisvn/obsidian-edge-tts) ⭐️

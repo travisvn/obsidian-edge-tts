@@ -1,4 +1,4 @@
-import { Plugin, MarkdownView, Notice, PluginSettingTab, Setting, Editor, MarkdownFileInfo, setIcon, setTooltip, TFile } from 'obsidian';
+import { Plugin, MarkdownView, Notice, PluginSettingTab, Setting, Editor, MarkdownFileInfo, setIcon, setTooltip, TFile, FileSystemAdapter } from 'obsidian';
 import { EdgeTTSClient, OUTPUT_FORMAT, ProsodyOptions } from 'edge-tts-client';
 import { filterFrontmatter, filterMarkdown } from 'src/utils';
 
@@ -21,19 +21,31 @@ interface EdgeTTSPluginSettings {
 	selectedVoice: string;
 	customVoice: string;
 	playbackSpeed: number;
+
 	showNotices: boolean;
 	showStatusBarButton: boolean;
 	showMenuItems: boolean;
+
+	generateMP3: boolean;
+	outputFolder: string;
+	embedInNote: boolean;
+	replaceSpacesInFilenames: boolean;
 }
 
 const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
 	selectedVoice: 'en-US-ChristopherNeural',
 	customVoice: '',
 	playbackSpeed: 1.2,
+
 	showNotices: true,
 	showStatusBarButton: true,
 	showMenuItems: true,
-};
+
+	generateMP3: false,
+	outputFolder: 'Note Narration Audio',
+	embedInNote: false,
+	replaceSpacesInFilenames: false,
+}
 
 export default class EdgeTTSPlugin extends Plugin {
 	settings: EdgeTTSPluginSettings;
@@ -120,6 +132,17 @@ export default class EdgeTTSPlugin extends Plugin {
 							this.readNoteAloud(undefined, undefined, file.path);
 						});
 				});
+
+				if (this.settings.generateMP3) {
+					menu.addItem((item) => {
+						item
+							.setTitle('Generate MP3')
+							.setIcon('microphone')
+							.onClick(async () => {
+								await this.generateMP3(undefined, undefined, file.path);
+							});
+					});
+				}
 			})
 		);
 
@@ -133,6 +156,17 @@ export default class EdgeTTSPlugin extends Plugin {
 							this.readNoteAloud(editor, view);
 						});
 				});
+
+				if (this.settings.generateMP3) {
+					menu.addItem((item) => {
+						item
+							.setTitle('Generate MP3')
+							.setIcon('microphone')
+							.onClick(async () => {
+								await this.generateMP3(editor, view);
+							});
+					});
+				}
 			})
 		);
 	}
@@ -169,6 +203,157 @@ export default class EdgeTTSPlugin extends Plugin {
 		} else {
 			console.warn('The specified file is not a TFile (markdown file).');
 			return null;
+		}
+	}
+
+	async embedMP3InNote(fileName: string, folderPath: string, filePath: string): Promise<void> {
+		// Ensure the file exists and is a markdown file
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		if (!(file instanceof TFile)) {
+			if (this.settings.showNotices) new Notice(`File not found or is not a valid markdown file: ${filePath}`);
+			return;
+		}
+
+		try {
+			// Read the existing content of the note
+			const content = await this.app.vault.read(file);
+
+			// Construct the embed link
+			const embedLink = `![[${folderPath}/${fileName}]]`;
+
+			// Append the embed link to the content
+			const updatedContent = `${content}\n\n${embedLink}`;
+
+			// Write the updated content back to the note
+			await this.app.vault.modify(file, updatedContent);
+
+			if (this.settings.showNotices) new Notice('MP3 embedded in note.');
+		} catch (error) {
+			console.error('Error embedding MP3 in note:', error);
+			if (this.settings.showNotices) new Notice('Failed to embed MP3 in note.');
+		}
+	}
+
+	async saveMP3File(buffer: Buffer, filePath?: string): Promise<void> {
+		const adapter = this.app.vault.adapter;
+
+		if (!(adapter instanceof FileSystemAdapter)) {
+			console.error('File system adapter not available.');
+			if (this.settings.showNotices) new Notice('Unable to save MP3 file.');
+			return;
+		}
+
+		const basePath = adapter.getBasePath();
+		const fallbackFolderName = (this.settings.replaceSpacesInFilenames) ? 'Note_Narration_Audio' : 'Note Narration Audio';
+		const folderPath = this.settings.outputFolder || fallbackFolderName;
+		const relativeFolderPath = folderPath; // Path relative to vault root
+		const absoluteFolderPath = `${basePath}/${relativeFolderPath}`; // Full system path
+
+		try {
+			// Ensure the relative output folder exists
+			if (!await adapter.exists(relativeFolderPath)) {
+				await adapter.mkdir(relativeFolderPath);
+			}
+
+			// Format the current date and time
+			const now = new Date();
+			const formattedDate = new Intl.DateTimeFormat('en-US', {
+				month: 'short',
+				day: '2-digit',
+				year: 'numeric',
+				hour: '2-digit',
+				minute: '2-digit',
+				hour12: false,
+			}).format(now);
+
+			// Replace commas with spaces and trim
+			let sanitizedDate = formattedDate.replace(/,/g, '').trim();
+
+			// Generate the file name
+			let noteName = filePath ? filePath.split('/').pop()?.replace('.md', '') || 'note' : 'note';
+
+			// Replace spaces with underscores or dashes if the setting is enabled
+			if (this.settings.replaceSpacesInFilenames) {
+				noteName = noteName.replace(/\s+/g, '_'); // Use underscores or replace '_' with '-' if desired
+				sanitizedDate = sanitizedDate.replace(/\s+/g, '_');
+			}
+
+			const fileName = (this.settings.replaceSpacesInFilenames)
+				? `${noteName}_-_${sanitizedDate}.mp3`
+				: `${noteName} - ${sanitizedDate}.mp3`;
+			const relativeFilePath = `${relativeFolderPath}/${fileName}`;
+			const absoluteFilePath = `${absoluteFolderPath}/${fileName}`;
+
+			// Explicitly create an empty file before writing
+			await adapter.write(relativeFilePath, '');
+
+			// Write the MP3 file
+			await adapter.writeBinary(relativeFilePath, buffer);
+
+			if (this.settings.showNotices) {
+				if (this.settings.showNotices) new Notice(`MP3 saved to: ${absoluteFilePath}`);
+			}
+
+			// Optionally embed the MP3 in the note
+			if (this.settings.embedInNote && filePath) {
+				await this.embedMP3InNote(fileName, folderPath, filePath);
+			}
+		} catch (error) {
+			console.error('Error saving MP3:', error);
+			if (this.settings.showNotices) new Notice('Failed to save MP3 file.');
+		}
+	}
+
+	async generateMP3(editor?: Editor, viewInput?: MarkdownView | MarkdownFileInfo, filePath?: string) {
+		let selectedText = '';
+		let cleanText = '';
+
+		if (filePath) {
+			const fileContent = await this.extractFileContent(filePath);
+			if (fileContent) {
+				selectedText = fileContent;
+			} else {
+				if (this.settings.showNotices) new Notice('Failed to generate MP3: could not read file.');
+				return;
+			}
+		} else {
+			const view = viewInput ?? this.app.workspace.getActiveViewOfType(MarkdownView);
+
+			if (!editor && view) editor = view.editor;
+
+			if (editor && view) {
+				selectedText = editor.getSelection() || editor.getValue();
+			}
+		}
+
+		if (selectedText.trim()) {
+			cleanText = filterMarkdown(filterFrontmatter(selectedText));
+
+			if (cleanText.trim()) {
+				try {
+					if (this.settings.showNotices) new Notice('Generating MP3...');
+
+					const tts = new EdgeTTSClient();
+					const voiceToUse = this.settings.customVoice.trim() || this.settings.selectedVoice;
+					await tts.setMetadata(voiceToUse, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+
+					const audioBuffer: Uint8Array[] = [];
+					const readable = tts.toStream(cleanText);
+
+					readable.on('data', (data: Uint8Array) => audioBuffer.push(data));
+					readable.on('end', async () => {
+						const completeBuffer = Buffer.concat(audioBuffer);
+						await this.saveMP3File(completeBuffer, filePath);
+					});
+				} catch (error) {
+					console.error('Error generating MP3:', error);
+					if (this.settings.showNotices) new Notice('Failed to generate MP3.');
+				}
+			} else {
+				if (this.settings.showNotices) new Notice('No readable text after filtering.');
+			}
+		} else {
+			if (this.settings.showNotices) new Notice('No text selected or available.');
 		}
 	}
 
@@ -424,6 +609,56 @@ class EdgeTTSPluginSettingTab extends PluginSettingTab {
 					} else {
 						new Notice('Menu items will be removed after the next reload.');
 					}
+				});
+			});
+
+		containerEl.createEl('h3', { text: 'Saving .mp3 of narration' });
+
+		new Setting(containerEl)
+			.setName('Generate MP3 file')
+			.setDesc('Enable option to select "Generate MP3" in the file and editor menus.')
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.settings.generateMP3);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.generateMP3 = value;
+					await this.plugin.saveSettings();
+					if (!value) {
+						new Notice('Menu items will be removed after the next reload.');
+					}
+				});
+			});
+
+		new Setting(containerEl)
+			.setName('Output folder')
+			.setDesc('Specify the folder to save generated MP3 files.')
+			.addText(text => {
+				text.setPlaceholder('e.g., Note Narration Audio')
+					.setValue(this.plugin.settings.outputFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.outputFolder = value.trim();
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('Embed MP3 in note')
+			.setDesc('Embed a link to the generated MP3 file in the note.')
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.settings.embedInNote);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.embedInNote = value;
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName('Replace spaces in filenames')
+			.setDesc('Replaces spaces in mp3 file name with underscores (used for system compatibility).')
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.settings.replaceSpacesInFilenames);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.replaceSpacesInFilenames = value;
+					await this.plugin.saveSettings();
 				});
 			});
 
