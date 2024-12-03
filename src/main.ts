@@ -2,6 +2,9 @@ import { Plugin, MarkdownView, Notice, PluginSettingTab, Setting, Editor, Markdo
 import { EdgeTTSClient, OUTPUT_FORMAT, ProsodyOptions } from 'edge-tts-client';
 import { filterFrontmatter, filterMarkdown } from 'src/utils';
 
+import * as path from 'path';
+import * as os from 'os';
+
 // Top voices to be displayed in the dropdown
 const TOP_VOICES = [
 	'en-US-AndrewNeural',
@@ -46,6 +49,8 @@ const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
 	embedInNote: false,
 	replaceSpacesInFilenames: false,
 }
+
+const defaultSelectedTextMp3Name = 'note'
 
 export default class EdgeTTSPlugin extends Plugin {
 	settings: EdgeTTSPluginSettings;
@@ -206,48 +211,76 @@ export default class EdgeTTSPlugin extends Plugin {
 		}
 	}
 
-	async embedMP3InNote(fileName: string, folderPath: string, filePath: string): Promise<void> {
-		// Ensure the file exists and is a markdown file
-		const file = this.app.vault.getAbstractFileByPath(filePath);
-		if (!(file instanceof TFile)) {
-			if (this.settings.showNotices) new Notice(`File not found or is not a valid markdown file: ${filePath}`);
-			return;
-		}
-
+	async embedMP3InNote(relativePath: string, filePath?: string, editor?: Editor): Promise<void> {
 		try {
-			// Read the existing content of the note
-			const content = await this.app.vault.read(file);
+			if (editor) {
+				// Get the selected text and its position in the editor
+				const selectedText = editor.getSelection();
+				const cursorPosition = editor.getCursor('to');
 
-			// Construct the embed link
-			const embedLink = `![[${folderPath}/${fileName}]]`;
+				// Construct the embed link
+				const embedLink = `\n\n![[${relativePath}]]\n`;
 
-			// Append the embed link to the content
-			const updatedContent = `${content}\n\n${embedLink}`;
+				// Insert the embed link after the selected text
+				if (selectedText) {
+					editor.replaceSelection(`${selectedText}${embedLink}`);
+				} else {
+					// If no selection, insert at the cursor position
+					editor.replaceRange(embedLink, cursorPosition);
+				}
 
-			// Write the updated content back to the note
-			await this.app.vault.modify(file, updatedContent);
+				if (this.settings.showNotices) new Notice('MP3 embedded after the selected text.');
+			} else {
+				if (!filePath) {
+					console.error('Error embedding MP3 in note due to filePath and editor not being passed to embedMP3InNote');
+					if (this.settings.showNotices) new Notice('Failed to embed MP3 in note.');
+					return;
+				}
 
-			if (this.settings.showNotices) new Notice('MP3 embedded in note.');
+				// Fallback for non-editor scenarios
+				const file = this.app.vault.getAbstractFileByPath(filePath);
+				if (!(file instanceof TFile)) {
+					if (this.settings.showNotices) new Notice(`File not found or is not a valid markdown file: ${filePath}`);
+					return;
+				}
+
+				// Read the existing content of the note
+				const content = await this.app.vault.read(file);
+
+				// Construct the embed link
+				const embedLink = `![[${relativePath}]]`;
+
+				// Append the embed link to the content
+				const updatedContent = `${content}\n\n${embedLink}`;
+
+				// Write the updated content back to the note
+				await this.app.vault.modify(file, updatedContent);
+
+				if (this.settings.showNotices) new Notice('MP3 embedded in note.');
+			}
 		} catch (error) {
 			console.error('Error embedding MP3 in note:', error);
 			if (this.settings.showNotices) new Notice('Failed to embed MP3 in note.');
 		}
 	}
 
-	async saveMP3File(buffer: Buffer, filePath?: string): Promise<void> {
+	async saveMP3File(buffer: Buffer, filePath?: string): Promise<string | null> {
 		const adapter = this.app.vault.adapter;
 
 		if (!(adapter instanceof FileSystemAdapter)) {
 			console.error('File system adapter not available.');
 			if (this.settings.showNotices) new Notice('Unable to save MP3 file.');
-			return;
+			return null;
 		}
 
 		const basePath = adapter.getBasePath();
-		const fallbackFolderName = (this.settings.replaceSpacesInFilenames) ? 'Note_Narration_Audio' : 'Note Narration Audio';
+		const fallbackFolderName = this.settings.replaceSpacesInFilenames
+			? 'Note_Narration_Audio'
+			: 'Note Narration Audio';
 		const folderPath = this.settings.outputFolder || fallbackFolderName;
+
 		const relativeFolderPath = folderPath; // Path relative to vault root
-		const absoluteFolderPath = `${basePath}/${relativeFolderPath}`; // Full system path
+		const absoluteFolderPath = path.join(basePath, relativeFolderPath); // Platform-agnostic path
 
 		try {
 			// Ensure the relative output folder exists
@@ -266,23 +299,28 @@ export default class EdgeTTSPlugin extends Plugin {
 				hour12: false,
 			}).format(now);
 
-			// Replace commas with spaces and trim
 			let sanitizedDate = formattedDate.replace(/,/g, '').trim();
 
-			// Generate the file name
-			let noteName = filePath ? filePath.split('/').pop()?.replace('.md', '') || 'note' : 'note';
+			// Check for Windows and adjust the date format to remove colons
+			if (os.platform() === 'win32') {
+				sanitizedDate = sanitizedDate.replace(/:/g, '-');
+			}
 
-			// Replace spaces with underscores or dashes if the setting is enabled
+			// Generate the file name
+			let noteName = filePath
+				? path.basename(filePath, '.md') || defaultSelectedTextMp3Name
+				: defaultSelectedTextMp3Name;
+
 			if (this.settings.replaceSpacesInFilenames) {
-				noteName = noteName.replace(/\s+/g, '_'); // Use underscores or replace '_' with '-' if desired
+				noteName = noteName.replace(/\s+/g, '_');
 				sanitizedDate = sanitizedDate.replace(/\s+/g, '_');
 			}
 
-			const fileName = (this.settings.replaceSpacesInFilenames)
+			const fileName = this.settings.replaceSpacesInFilenames
 				? `${noteName}_-_${sanitizedDate}.mp3`
 				: `${noteName} - ${sanitizedDate}.mp3`;
-			const relativeFilePath = `${relativeFolderPath}/${fileName}`;
-			const absoluteFilePath = `${absoluteFolderPath}/${fileName}`;
+			const relativeFilePath = path.join(relativeFolderPath, fileName);
+			const absoluteFilePath = path.join(absoluteFolderPath, fileName);
 
 			// Explicitly create an empty file before writing
 			await adapter.write(relativeFilePath, '');
@@ -290,17 +328,14 @@ export default class EdgeTTSPlugin extends Plugin {
 			// Write the MP3 file
 			await adapter.writeBinary(relativeFilePath, buffer);
 
-			if (this.settings.showNotices) {
-				if (this.settings.showNotices) new Notice(`MP3 saved to: ${absoluteFilePath}`);
-			}
+			if (this.settings.showNotices) new Notice(`MP3 saved to: ${absoluteFilePath}`);
 
-			// Optionally embed the MP3 in the note
-			if (this.settings.embedInNote && filePath) {
-				await this.embedMP3InNote(fileName, folderPath, filePath);
-			}
+			// return fileName; // Return the file name
+			return relativeFilePath;
 		} catch (error) {
 			console.error('Error saving MP3:', error);
 			if (this.settings.showNotices) new Notice('Failed to save MP3 file.');
+			return null;
 		}
 	}
 
@@ -343,7 +378,13 @@ export default class EdgeTTSPlugin extends Plugin {
 					readable.on('data', (data: Uint8Array) => audioBuffer.push(data));
 					readable.on('end', async () => {
 						const completeBuffer = Buffer.concat(audioBuffer);
-						await this.saveMP3File(completeBuffer, filePath);
+
+						// Save MP3 file and get fileName
+						const savedMp3RelativePath = await this.saveMP3File(completeBuffer, filePath);
+
+						if (savedMp3RelativePath && this.settings.embedInNote) {
+							await this.embedMP3InNote(savedMp3RelativePath, filePath, editor);
+						}
 					});
 				} catch (error) {
 					console.error('Error generating MP3:', error);
