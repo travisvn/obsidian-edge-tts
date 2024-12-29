@@ -33,6 +33,8 @@ interface EdgeTTSPluginSettings {
 	outputFolder: string;
 	embedInNote: boolean;
 	replaceSpacesInFilenames: boolean;
+
+	replaceAmpersand: boolean;
 }
 
 const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
@@ -48,6 +50,8 @@ const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
 	outputFolder: 'Note Narration Audio',
 	embedInNote: false,
 	replaceSpacesInFilenames: false,
+
+	replaceAmpersand: true,
 }
 
 const defaultSelectedTextMp3Name = 'note'
@@ -362,7 +366,7 @@ export default class EdgeTTSPlugin extends Plugin {
 		}
 
 		if (selectedText.trim()) {
-			cleanText = filterMarkdown(filterFrontmatter(selectedText));
+			cleanText = filterMarkdown(filterFrontmatter(selectedText), this.settings.replaceAmpersand);
 
 			if (cleanText.trim()) {
 				try {
@@ -427,7 +431,7 @@ export default class EdgeTTSPlugin extends Plugin {
 		}
 
 		if (selectedText.trim()) {
-			cleanText = filterMarkdown(filterFrontmatter(selectedText));
+			cleanText = filterMarkdown(filterFrontmatter(selectedText), this.settings.replaceAmpersand);
 
 			if (cleanText.trim()) {
 				try {
@@ -718,5 +722,18 @@ class EdgeTTSPluginSettingTab extends PluginSettingTab {
 				rel: 'noopener'
 			}
 		});
+
+		containerEl.createEl('h3', { text: 'Extra Settings' });
+
+		new Setting(containerEl)
+			.setName('Replace ampersand (&) with "and"')
+			.setDesc('Enable replacement of & with "and". Otherwise, it is removed, as the TTS cannot handle the symbol natively. (Note: this will not replace the actual text in your note)')
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.settings.replaceAmpersand);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.replaceAmpersand = value;
+					await this.plugin.saveSettings();
+				});
+			});
 	}
 }

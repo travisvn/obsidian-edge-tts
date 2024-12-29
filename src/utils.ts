@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-inferrable-types */
 /* eslint-disable no-useless-escape */
 
 /**
@@ -14,7 +15,20 @@ export function filterFrontmatter(text: string): string {
   return text.replace(frontmatterRegex, '').trim();
 }
 
-export function filterMarkdown(text: string): string {
+/**
+ * Replaces or removes all ampersands (&) in the text.
+ * @param text - The input text.
+ * @param replaceWithAnd - If true, replaces ampersands with "and"; otherwise, removes them.
+ * @returns The text with ampersands processed.
+ */
+export function processAmpersands(text: string, replaceWithAnd: boolean): string {
+  return replaceWithAnd ? text.replace(/&/g, 'and') : text.replace(/&/g, '');
+}
+
+export function filterMarkdown(text: string, replaceAmpersandsWithAnd: boolean = true): string {
+  // Process ampersands
+  text = processAmpersands(text, replaceAmpersandsWithAnd);
+
   // Remove URLs
   text = text.replace(/https?:\/\/[^\s]+/g, '');
 
