@@ -15,47 +15,64 @@ export function filterFrontmatter(text: string): string {
   return text.replace(frontmatterRegex, '').trim();
 }
 
-/**
- * Replaces or removes all ampersands (&) in the text.
- * @param text - The input text.
- * @param replaceWithAnd - If true, replaces ampersands with "and"; otherwise, removes them.
- * @returns The text with ampersands processed.
- */
-export function processAmpersands(text: string, replaceWithAnd: boolean): string {
-  return replaceWithAnd ? text.replace(/&/g, 'and') : text.replace(/&/g, '');
+export function replaceComparisonSymbols(text: string): string {
+  return text
+    .replace(/>=/g, '≥') // Replace ">=" with "≥"
+    .replace(/<=/g, '≤'); // Replace "<=" with "≤"
 }
 
-export function filterMarkdown(text: string, replaceAmpersandsWithAnd: boolean = true): string {
-  // Process ampersands
-  text = processAmpersands(text, replaceAmpersandsWithAnd);
+export function escapeAmpersand(text: string): string {
+  return text.replace(/&/g, '&amp;')  // Escape '&'
+}
+
+export function escapeXml(text: string): string {
+  return text
+    // .replace(/&/g, '&amp;')  // Escape '&' first to avoid double escaping
+    .replace(/</g, '&lt;')   // Escape '<'
+    .replace(/>/g, '&gt;')   // Escape '>'
+    .replace(/"/g, '&quot;') // Escape '"'
+    .replace(/'/g, '&apos;'); // Escape "'"
+}
+
+export function filterMarkdown(text: string, overrideAmpersandEscape = false): string {
+  // Remove frontmatter (e.g., YAML between triple dashes "---")
+  const noFrontmatter = text.replace(/^-{3}[\s\S]*?-{3}\n?/, '');
 
   // Remove URLs
-  text = text.replace(/https?:\/\/[^\s]+/g, '');
+  const noUrls = noFrontmatter.replace(/https?:\/\/[^\s]+/g, '');
 
-  // Remove Markdown links [text](url)
-  text = text.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+  // Remove code blocks (e.g., fenced with ``` or indented by 4 spaces)
+  const noCodeBlocks = noUrls.replace(/```[\s\S]*?```/g, '').replace(/^( {4}|\t).+/gm, '');
 
-  // Remove bold/italic symbols
-  text = text.replace(/(\*\*|__|\*|_)/g, '');
+  // Remove inline markdown syntax
+  let cleanedMarkdown = noCodeBlocks
+    // Remove bold (**text** or __text__) and italics (*text* or _text_)
+    .replace(/(\*\*|__)(.*?)\1/g, '$2') // Bold
+    .replace(/(\*|_)(.*?)\1/g, '$2')   // Italics
+    // Remove inline code markers (`code`)
+    .replace(/`([^`]*)`/g, '$1')
+    // Remove strikethrough (~~text~~)
+    .replace(/~~(.*?)~~/g, '$1')
+    // Remove other markdown characters (e.g., #, -, *, etc., not part of inline code)
+    .replace(/^[#*-]+\s*/gm, '')
+    // Remove unordered list markers (e.g., "- ", "* ", "+ ")
+    .replace(/^[\-\+\*]\s+/gm, '')
+    // Remove ordered list numbers (e.g., "1. ", "2. ")
+    .replace(/^\d+\.\s+/gm, '')
+    // Remove blockquote markers (e.g., "> ") only at the start of a line
+    .replace(/^>\s+/gm, '')
+    // Remove horizontal rules (e.g., "---", "***")
+    .replace(/^[-*]{3,}\s*$/gm, '');
 
-  // Remove headers (#, ##, ###, etc.)
-  text = text.replace(/^#+\s+/gm, '');
+  cleanedMarkdown = replaceComparisonSymbols(cleanedMarkdown);
 
-  // Remove code blocks and inline code
-  text = text.replace(/`{1,3}[^`]+`{1,3}/g, '');
-  text = text.replace(/```[\s\S]+?```/g, '');
+  // Remove HTML tags explicitly while preserving `<` and `>` symbols in text
+  cleanedMarkdown = cleanedMarkdown.replace(/<([^>\s]+)[^>]*>/g, '');
 
-  // Remove other Markdown syntax like lists and quotes
-  text = text.replace(/^[>\-\+\*\d]+\s+/gm, '');
+  // Trim leading and trailing whitespace and escape '&' if indicated
+  cleanedMarkdown = (overrideAmpersandEscape) ? cleanedMarkdown.trim() : escapeAmpersand(cleanedMarkdown.trim());
 
-  // Remove image syntax ![alt text](url)
-  text = text.replace(/!\[([^\]]*)\]\([^\)]+\)/g, '');
+  const finalText = escapeXml(cleanedMarkdown);
 
-  // Remove HTML tags
-  text = text.replace(/<\/?[^>]+(>|$)/g, '');
-
-  // Trim extra whitespace
-  text = text.trim();
-
-  return text;
+  return finalText;
 }

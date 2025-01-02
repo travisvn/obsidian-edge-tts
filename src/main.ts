@@ -34,7 +34,7 @@ interface EdgeTTSPluginSettings {
 	embedInNote: boolean;
 	replaceSpacesInFilenames: boolean;
 
-	replaceAmpersand: boolean;
+	overrideAmpersandEscape: boolean;
 }
 
 const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
@@ -51,7 +51,7 @@ const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
 	embedInNote: false,
 	replaceSpacesInFilenames: false,
 
-	replaceAmpersand: true,
+	overrideAmpersandEscape: false,
 }
 
 const defaultSelectedTextMp3Name = 'note'
@@ -366,7 +366,7 @@ export default class EdgeTTSPlugin extends Plugin {
 		}
 
 		if (selectedText.trim()) {
-			cleanText = filterMarkdown(filterFrontmatter(selectedText), this.settings.replaceAmpersand);
+			cleanText = filterMarkdown(filterFrontmatter(selectedText), this.settings.overrideAmpersandEscape);
 
 			if (cleanText.trim()) {
 				try {
@@ -431,7 +431,7 @@ export default class EdgeTTSPlugin extends Plugin {
 		}
 
 		if (selectedText.trim()) {
-			cleanText = filterMarkdown(filterFrontmatter(selectedText), this.settings.replaceAmpersand);
+			cleanText = filterMarkdown(filterFrontmatter(selectedText), this.settings.overrideAmpersandEscape);
 
 			if (cleanText.trim()) {
 				try {
@@ -726,12 +726,12 @@ class EdgeTTSPluginSettingTab extends PluginSettingTab {
 		containerEl.createEl('h3', { text: 'Extra Settings' });
 
 		new Setting(containerEl)
-			.setName('Replace ampersand (&) with "and"')
-			.setDesc('Enable replacement of & with "and". Otherwise, it is removed, as the TTS cannot handle the symbol natively. (Note: this will not replace the actual text in your note)')
+			.setName('Override ampersand (&) escaping')
+			.setDesc('If an ampersand (&) is by itself, we "escape it" for the API call. This override is an option for rare use cases.')
 			.addToggle(toggle => {
-				toggle.setValue(this.plugin.settings.replaceAmpersand);
+				toggle.setValue(this.plugin.settings.overrideAmpersandEscape);
 				toggle.onChange(async (value) => {
-					this.plugin.settings.replaceAmpersand = value;
+					this.plugin.settings.overrideAmpersandEscape = value;
 					await this.plugin.saveSettings();
 				});
 			});
