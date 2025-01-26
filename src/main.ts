@@ -7,6 +7,8 @@ import * as os from 'os';
 
 // Top voices to be displayed in the dropdown
 const TOP_VOICES = [
+	'en-US-AvaMultilingualNeural',
+	'en-US-BrianMultilingualNeural',
 	'en-US-AndrewNeural',
 	'en-US-AriaNeural',
 	'en-US-AvaNeural',
@@ -38,9 +40,9 @@ interface EdgeTTSPluginSettings {
 }
 
 const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
-	selectedVoice: 'en-US-ChristopherNeural',
+	selectedVoice: 'en-US-AvaNeural',
 	customVoice: '',
-	playbackSpeed: 1.2,
+	playbackSpeed: 1.0,
 
 	showNotices: true,
 	showStatusBarButton: true,
