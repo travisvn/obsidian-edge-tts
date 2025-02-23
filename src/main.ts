@@ -296,21 +296,7 @@ export default class EdgeTTSPlugin extends Plugin {
 
 			// Format the current date and time
 			const now = new Date();
-			const formattedDate = new Intl.DateTimeFormat('en-US', {
-				month: 'short',
-				day: '2-digit',
-				year: 'numeric',
-				hour: '2-digit',
-				minute: '2-digit',
-				hour12: false,
-			}).format(now);
-
-			let sanitizedDate = formattedDate.replace(/,/g, '').trim();
-
-			// Check for Windows and adjust the date format to remove colons
-			if (os.platform() === 'win32') {
-				sanitizedDate = sanitizedDate.replace(/:/g, '-');
-			}
+			let sanitizedDate = now.toISOString().replace(/[^0-9]/g, '');
 
 			// Generate the file name
 			let noteName = filePath
