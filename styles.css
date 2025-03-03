@@ -5,6 +5,10 @@
 	justify-content: center;
 	align-items: center;
 	text-align: center;
+	margin-bottom: 1em;
+	padding: 10px;
+	border-radius: 5px;
+	background-color: var(--background-secondary);
 }
 
 .edge-tts-star-section {
@@ -14,10 +18,16 @@
 	justify-content: center;
 	align-items: center;
 	text-align: center;
+	margin-top: 2em;
+	padding: 10px;
+	border-radius: 5px;
+	background-color: var(--background-secondary);
 }
 
 .edge-tts-star-message {
 	font-size: x-large;
+	margin-bottom: 0.5em;
+	font-weight: 500;
 }
 
 .edge-tts-status-bar-control {
@@ -27,8 +37,44 @@
 	margin-right: 5px;
 	margin-left: 5px;
 	font-size: 8px;
+	margin: 0 4px;
+	opacity: 0.8;
+	transition: opacity 0.2s ease;
 }
 
 .edge-tts-status-bar-control:hover {
 	color: var(--interactive-accent);
+	opacity: 1;
+}
+
+/* TTS Processing Progress Indicator */
+.edge-tts-status-bar-progress-container {
+	display: flex;
+	align-items: center;
+	padding: 0 8px;
+	height: 100%;
+	background-color: var(--background-modifier-success-hover);
+	border-radius: 4px;
+	animation: pulse 2s infinite;
+}
+
+.edge-tts-status-bar-icon {
+	margin-right: 6px;
+}
+
+.edge-tts-status-bar-text {
+	font-size: 12px;
+	font-weight: 500;
+}
+
+@keyframes pulse {
+	0% {
+		background-color: var(--background-modifier-success-hover);
+	}
+	50% {
+		background-color: var(--background-modifier-success);
+	}
+	100% {
+		background-color: var(--background-modifier-success-hover);
+	}
 }
