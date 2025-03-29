@@ -42,7 +42,7 @@ export function filterMarkdown(text: string, overrideAmpersandEscape = false): s
   const noUrls = noFrontmatter.replace(/https?:\/\/[^\s]+/g, '');
 
   // Remove code blocks (e.g., fenced with ``` or indented by 4 spaces)
-  const noCodeBlocks = noUrls.replace(/```[\s\S]*?```/g, '').replace(/^( {4}|\t).+/gm, '');
+  const noCodeBlocks = noUrls.replace(/```[\s\S]*?```/g, '').replace(/^( {4}|\t)(?!(?:[-*+ ]|\d+\.) ).+/gm, '');
 
   // Remove inline markdown syntax
   let cleanedMarkdown = noCodeBlocks
