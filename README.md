@@ -10,7 +10,6 @@
 	<a href="https://github.com/travisvn/obsidian-edge-tts/issues">
 	  <img src="https://img.shields.io/github/issues/travisvn/obsidian-edge-tts" alt="GitHub issues"></a>
 	<img src="https://img.shields.io/github/last-commit/travisvn/obsidian-edge-tts?color=red" alt="GitHub last commit">
-	<img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2Ftravisvn%2Fobsidian-edge-tts&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false" alt="Hits">
 	<a href="https://discord.gg/GkFbBCBqJ6" target="_blank">
   <img src="https://img.shields.io/badge/Discord-Voice_AI_%26_TTS_Tools-blue?logo=discord&logoColor=white" alt="Discord">
 </a>
