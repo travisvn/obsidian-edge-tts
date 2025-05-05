@@ -1,5 +1,12 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import EdgeTTSPlugin from '../main';
+import { APP_STORE_LINKS } from './constants';
+
+// Import SVG content as strings
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const googlePlayIconSvg = require('../assets/google-play-icon.svg');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const appleAppStoreIconSvg = require('../assets/apple-app-store.svg');
 
 // Settings interface and default settings
 export interface EdgeTTSPluginSettings {
@@ -229,6 +236,44 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
         });
       });
 
+    // --- Add Mobile App Section --- 
+    const mobileAppSection = containerEl.createDiv({ cls: 'edge-tts-mobile-app-section' });
+    mobileAppSection.createEl('h3', { text: '📱 Mobile support' });
+    mobileAppSection.createEl('p', {
+      text: 'Create audio narration for your Obsidian notes using our free mobile app.'
+    });
+
+    const buttonContainer = mobileAppSection.createDiv({ cls: 'edge-tts-app-store-buttons' });
+
+    // Google Play Button
+    const googlePlayButton = buttonContainer.createEl('a', {
+      cls: 'edge-tts-app-store-button',
+      href: APP_STORE_LINKS.googlePlay,
+      attr: { target: '_blank', rel: 'noopener' }
+    });
+    // Set SVG Icon from imported file
+    googlePlayButton.innerHTML = googlePlayIconSvg;
+    const googlePlaySvgElement = googlePlayButton.querySelector('svg');
+    if (googlePlaySvgElement) {
+      googlePlaySvgElement.addClass('edge-tts-app-store-icon'); // Add a common class if needed for sizing
+    }
+    googlePlayButton.createSpan({ text: 'Google Play' });
+
+    // Apple App Store Button
+    const appleStoreButton = buttonContainer.createEl('a', {
+      cls: 'edge-tts-app-store-button',
+      href: APP_STORE_LINKS.appleAppStore,
+      attr: { target: '_blank', rel: 'noopener' }
+    });
+    // Set SVG Icon from imported file
+    appleStoreButton.innerHTML = appleAppStoreIconSvg;
+    const appleStoreSvgElement = appleStoreButton.querySelector('svg');
+    if (appleStoreSvgElement) {
+      appleStoreSvgElement.addClass('edge-tts-app-store-icon'); // Add a common class if needed for sizing
+    }
+    appleStoreButton.createSpan({ text: 'App Store' });
+    // --- End Mobile App Section ---
+
     const starContainer = containerEl.createEl('div', { cls: 'edge-tts-star-section' });
     starContainer.createEl('p', {
       text: 'Please star this project on GitHub if you find it useful ⭐️',
@@ -245,7 +290,7 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
       }
     });
 
-    containerEl.createEl('h3', { text: 'Extra Settings' });
+    containerEl.createEl('h3', { text: 'Extra settings' });
 
     new Setting(containerEl)
       .setName('Override ampersand (&) escaping')

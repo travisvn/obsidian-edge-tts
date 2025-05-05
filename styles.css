@@ -12,7 +12,6 @@
 }
 
 .edge-tts-star-section {
-	padding-bottom: 10px;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
@@ -22,6 +21,10 @@
 	padding: 10px;
 	border-radius: 5px;
 	background-color: var(--background-secondary);
+}
+
+.edge-tts-star-section a {
+	margin-bottom: 2em;
 }
 
 .edge-tts-star-message {
@@ -77,4 +80,56 @@
 	100% {
 		background-color: var(--background-modifier-success-hover);
 	}
+}
+
+/* Add styles for the mobile app promotion section in settings */
+.edge-tts-mobile-app-section {
+	margin-top: 2em;
+	padding: 1.5em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background-color: var(--background-secondary);
+}
+
+.edge-tts-mobile-app-section h3 {
+	margin-top: 0;
+	margin-bottom: 0.75em;
+	color: var(--text-accent);
+}
+
+.edge-tts-mobile-app-section p {
+	margin-bottom: 1em;
+	line-height: 1.6;
+}
+
+.edge-tts-app-store-buttons {
+	display: flex;
+	gap: 1em;
+	margin-top: 1em;
+}
+
+.edge-tts-app-store-button {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.5em 1em;
+	border: 1px solid var(--background-modifier-border-hover);
+	border-radius: 5px;
+	background-color: var(--interactive-normal);
+	color: var(--text-on-accent) !important; /* Ensure text is visible */
+	text-decoration: none;
+	transition: background-color 0.2s ease;
+}
+
+.edge-tts-app-store-button:hover {
+	background-color: var(--interactive-hover);
+	text-decoration: none;
+	color: var(
+		--text-on-accent
+	) !important; /* Ensure text is visible on hover */
+}
+
+.edge-tts-app-store-button svg {
+	width: 1.2em;
+	height: 1.2em;
+	margin-right: 0.5em;
 }

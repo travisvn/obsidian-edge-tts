@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-edge-tts",
-	"version": "1.10.0",
+	"version": "1.11.0",
 	"description": "This is a TTS plugin for Obsidian (https://obsidian.md).",
 	"main": "main.js",
 	"scripts": {
@@ -15,7 +15,7 @@
 		"Read Aloud"
 	],
 	"author": "Travis",
-	"license": "GPL-3.0",
+	"license": "AGPL-3.0",
 	"devDependencies": {
 		"@types/node": "^16.11.6",
 		"@typescript-eslint/eslint-plugin": "5.29.0",
