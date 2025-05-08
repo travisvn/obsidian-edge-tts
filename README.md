@@ -88,8 +88,5 @@ Create audio narration for your Obsidian notes through our free mobile app
   - Select `Read Aloud AI` from the native mobile share menu
   - Your markdown will be imported from the shared file and formatted like in the Obsidian desktop plugin
   - Narration will playback instantly, and you can export the `.mp3` generated back into Obsidian
+ 
 
-
-**NOTE:** _Full mobile support is currently pending an app update in the Apple App Store and Google Play Store_
-
-(will update this readme and push the new plugin version soon)
