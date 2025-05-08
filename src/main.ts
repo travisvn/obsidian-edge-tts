@@ -5,6 +5,7 @@ import { FileOperationsManager } from './modules/file-operations';
 import { UIManager } from './modules/ui-components';
 import { TTSEngine, TTSTaskStatus } from './modules/tts-engine';
 import { OUTPUT_FORMAT } from 'edge-tts-client';
+import { FloatingUIManager } from './modules/FloatingUIManager';
 
 export default class EdgeTTSPlugin extends Plugin {
 	settings: EdgeTTSPluginSettings;
@@ -12,6 +13,7 @@ export default class EdgeTTSPlugin extends Plugin {
 	fileManager: FileOperationsManager;
 	uiManager: UIManager;
 	ttsEngine: TTSEngine;
+	floatingUIManager: FloatingUIManager;
 
 	// Task tracking for MP3 generation
 	private mp3GenerationTasks: Map<string, { taskId: string, editor?: Editor, filePath?: string }> = new Map();
@@ -21,14 +23,61 @@ export default class EdgeTTSPlugin extends Plugin {
 			console.log('Loading Obsidian Edge TTS Plugin');
 		}
 
-		// Load settings
-		await this.loadSettings();
+		await this.loadSettings(); // 1. Load settings first
 
-		// Initialize managers
+		// 2. Define temp audio path
+		const tempAudioDir = this.app.vault.configDir + "/plugins/" + this.manifest.id + "/temp";
+		const tempAudioPath = tempAudioDir + "/tts-temp-audio.mp3";
+
+		// 3. Initialize FileOperationsManager
+		this.fileManager = new FileOperationsManager(this.app, this.settings, tempAudioPath);
+
+		// 4. Clean up any old temp audio file from a previous session
+		await this.fileManager.cleanupTempAudioFile();
+
+		// 5. Ensure temp directory for audio exists
+		if (!await this.app.vault.adapter.exists(tempAudioDir)) {
+			await this.app.vault.adapter.mkdir(tempAudioDir);
+		}
+
+		// 6. Initialize TTSEngine
 		this.ttsEngine = new TTSEngine(this.settings);
-		this.audioManager = new AudioPlaybackManager(this.settings, this.updateStatusBar.bind(this));
-		this.fileManager = new FileOperationsManager(this.app, this.settings);
+
+		// 7. Initialize AudioPlaybackManager
+		this.audioManager = new AudioPlaybackManager(
+			this.settings,
+			this.updateStatusBar.bind(this),
+			// Callbacks for floating UI - these will be set properly later
+			(data) => { console.warn("showFloatingPlayerCallback not yet initialized with data:", data); },
+			() => { console.warn("hideFloatingPlayerCallback not yet initialized"); },
+			(data) => { console.warn("updateFloatingPlayerCallback not yet initialized with data:", data); },
+			this.fileManager,
+			this.app
+		);
+
+		// 8. Initialize FloatingUIManager
+		this.floatingUIManager = new FloatingUIManager({
+			audioManager: this.audioManager,
+			savePositionCallback: async (position) => {
+				this.settings.floatingPlayerPosition = position;
+				await this.saveSettings();
+			}
+		});
+
+		// 9. Now, properly set the callbacks in AudioPlaybackManager
+		this.audioManager.setFloatingPlayerCallbacks(
+			(data) => this.floatingUIManager.showPlayer(data), // Pass data through
+			() => this.floatingUIManager.hidePlayer(),
+			(data) => this.floatingUIManager.updatePlayerState(data) // Pass data through
+		);
+
+		// 10. Initialize UIManager
 		this.uiManager = new UIManager(this, this.settings, this.audioManager, this.ttsEngine);
+
+		// 11. Set initial floating player position from loaded settings
+		if (this.settings.floatingPlayerPosition) {
+			this.floatingUIManager.setInitialSavedPosition(this.settings.floatingPlayerPosition);
+		}
 
 		// Add settings tab
 		this.addSettingTab(new EdgeTTSPluginSettingTab(this.app, this));
@@ -67,6 +116,25 @@ export default class EdgeTTSPlugin extends Plugin {
 			name: 'Stop TTS playback',
 			callback: () => {
 				this.audioManager.stopPlayback();
+			}
+		});
+
+		this.addCommand({
+			id: 'show-floating-playback-controls',
+			name: 'Show floating playback controls',
+			callback: () => {
+				if (!this.floatingUIManager.getIsPlayerVisible()) {
+					this.floatingUIManager.showPlayer();
+				}
+			}
+		});
+
+		this.addCommand({
+			id: 'reset-floating-player-position',
+			name: 'Reset floating player position',
+			callback: () => {
+				this.floatingUIManager.resetPlayerPosition();
+				if (this.settings.showNotices) new Notice('Floating player position reset.');
 			}
 		});
 	}
@@ -188,6 +256,7 @@ export default class EdgeTTSPlugin extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		// Initial position setting is moved to onload after floatingUIManager is initialized.
 	}
 
 	async saveSettings() {
@@ -198,12 +267,28 @@ export default class EdgeTTSPlugin extends Plugin {
 		this.fileManager.updateSettings(this.settings);
 		this.uiManager.updateSettings(this.settings);
 		this.ttsEngine.updateSettings(this.settings);
+		// If FloatingUIManager needs settings updates, add its updater here
 	}
 
 	onunload() {
 		console.log('Unloading Obsidian Edge TTS Plugin');
 		this.uiManager.removePluginRibbonIcon();
-		this.audioManager.cleanupAudioContext();
+		this.audioManager.stopPlayback(); // This will also trigger hidePlayer if popover is not disabled, which saves position
 		this.uiManager.removeStatusBarButton();
+
+		// Save position one last time on unload, if available and player was visible or position changed recently
+		// The hidePlayer and onDragEnd should cover most cases. This is a fallback.
+		const currentPosition = this.floatingUIManager.getCurrentPosition();
+		if (currentPosition &&
+			(this.settings.floatingPlayerPosition?.x !== currentPosition.x ||
+				this.settings.floatingPlayerPosition?.y !== currentPosition.y)) {
+			this.settings.floatingPlayerPosition = currentPosition;
+			// Directly save data to avoid triggering full saveSettings and potential side effects during unload
+			this.saveData(this.settings).catch(error => console.error("Failed to save player position on unload:", error));
+		}
+		this.floatingUIManager.destroy();
+
+		// No async cleanup in onunload for the temp file.
+		// It will be cleaned up on next load by cleanupTempAudioFile() in fileManager.
 	}
 }

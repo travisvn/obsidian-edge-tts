@@ -133,3 +133,232 @@
 	height: 1.2em;
 	margin-right: 0.5em;
 }
+
+/* Floating Player UI */
+.floating-player-ui {
+	position: fixed;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 12px; /* Uniform padding */
+	padding-right: 30px;
+	padding-left: 20px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	z-index: var(--layer-popover);
+	min-width: 220px; /* Adjusted min-width */
+	display: flex;
+	flex-direction: column;
+	gap: 8px; /* Gap between main sections */
+}
+
+.floating-player-close-button {
+	position: absolute;
+	top: 2px;
+	right: 2px;
+	background-color: transparent;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 3px;
+	line-height: 1;
+	z-index: 10; /* Ensure it's above other content within the player */
+	transition: background-color 0.2s ease;
+	border-radius: 4px;
+}
+
+.floating-player-close-button:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+	transition: background-color 0.2s ease;
+}
+
+.floating-player-ui .player-content {
+	padding: 0; /* Padding is now on the parent */
+	display: flex;
+	flex-direction: column;
+	gap: 10px; /* Gap between progress and controls */
+	width: 100%;
+	position: relative;
+}
+
+/* Remove title text if it was there */
+.floating-player-ui .player-content p {
+	display: none; /* Assuming we removed the status text as per JSX changes */
+}
+
+.floating-player-ui .player-progress {
+	display: flex;
+	align-items: center; /* Vertically align items */
+	gap: 8px; /* Gap between time, slider, time */
+	margin-bottom: 0; /* Remove bottom margin as parent has gap */
+}
+
+.floating-player-ui .player-progress .seek-slider {
+	flex-grow: 1; /* Slider takes up available space */
+	cursor: pointer;
+	margin: 0;
+}
+
+.floating-player-ui .player-progress .seek-slider:disabled {
+	cursor: not-allowed;
+}
+
+.floating-player-ui .player-progress span {
+	font-size: 0.9em;
+	color: var(--text-muted);
+	min-width: 35px; /* Ensure time doesn't jump around too much */
+	text-align: center;
+}
+
+.floating-player-ui .player-controls {
+	display: flex;
+	justify-content: center; /* Center main controls by default */
+	align-items: center;
+	gap: 10px; /* Gap between control buttons */
+	position: relative; /* For positioning loader and stop button */
+	min-height: 30px; /* Ensure space for loader/stop if controls are hidden */
+}
+
+/* New wrapper for the central playback buttons (play/pause, jumps) */
+.floating-player-ui .player-main-controls {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 10px;
+}
+
+.floating-player-ui .player-loading-indicator {
+	position: absolute;
+	left: 0;
+	bottom: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 6px; /* Match button padding for alignment */
+	color: var(--text-muted);
+}
+
+/* .floating-player-ui .player-loading-indicator .obsidian-icon svg {
+	animation: spin 1s linear infinite;
+} */
+
+.floating-player-ui .player-loading-indicator {
+	animation: spin 1s linear infinite;
+}
+
+.floating-player-ui .player-stop-button {
+	position: absolute;
+	right: 3px;
+	bottom: 3px;
+	/* player-control-button class already applied for base styling */
+	background-color: transparent;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 3px;
+	line-height: 1;
+	z-index: 10; /* Ensure it's above other content within the player */
+	transition: background-color 0.2s ease;
+	border-radius: 4px;
+}
+
+@keyframes spin {
+	0% {
+		transform: rotate(0deg);
+	}
+	100% {
+		transform: rotate(360deg);
+	}
+}
+
+.floating-player-ui .player-controls button,
+.floating-player-ui .player-controls .player-control-button {
+	/* Apply to new divs as well */
+	background: none;
+	border: none;
+	color: var(
+		--icon-color,
+		var(--text-normal)
+	); /* Use Obsidian icon color variable or fallback */
+	cursor: pointer;
+	padding: 6px;
+	border-radius: 4px;
+	transition: background-color 0.2s ease, color 0.2s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.floating-player-ui .player-controls button:hover,
+.floating-player-ui .player-controls .player-control-button:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--icon-color-hover, var(--text-accent));
+}
+
+.floating-player-ui .player-controls button:disabled,
+.floating-player-ui .player-controls .player-control-button:disabled {
+	color: var(--text-faint);
+	cursor: not-allowed;
+}
+
+.floating-player-ui .player-controls button:disabled:hover,
+.floating-player-ui .player-controls .player-control-button:disabled:hover {
+	background-color: transparent;
+	color: var(--text-faint);
+}
+
+/* Specific cursor for interactive elements if needed, to override grab */
+.floating-player-ui button,
+.floating-player-ui input[type="range"] {
+	cursor: pointer; /* Default pointer for buttons and slider */
+}
+
+.floating-player-ui input[type="range"]:disabled {
+	cursor: not-allowed;
+}
+
+.player-control-button {
+	background-color: transparent;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 3px;
+	line-height: 1;
+	z-index: 10; /* Ensure it's above other content within the player */
+	transition: background-color 0.2s ease;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.player-control-button:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+	transition: background-color 0.2s ease;
+}
+
+/* Remove old drag handle styles */
+/*
+.floating-player-ui .drag-handle {
+	padding: 8px 12px;
+	background-color: var(--background-secondary);
+	cursor: move;
+	border-top-left-radius: 8px;
+	border-top-right-radius: 8px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.floating-player-ui .drag-handle .close-button {
+	background: none;
+	border: none;
+	color: var(--text-muted);
+	font-size: 1.2em;
+	padding: 0 4px;
+	cursor: pointer;
+}
+.floating-player-ui .drag-handle .close-button:hover {
+	color: var(--text-normal);
+}
+*/

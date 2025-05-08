@@ -24,6 +24,9 @@ export interface EdgeTTSPluginSettings {
   replaceSpacesInFilenames: boolean;
 
   overrideAmpersandEscape: boolean;
+  floatingPlayerPosition: { x: number; y: number } | null;
+  disablePlaybackControlPopover: boolean;
+  enableReplayOption: boolean;
 }
 
 // Top voices to be displayed in the dropdown
@@ -57,6 +60,9 @@ export const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
   replaceSpacesInFilenames: false,
 
   overrideAmpersandEscape: false,
+  floatingPlayerPosition: null,
+  disablePlaybackControlPopover: false,
+  enableReplayOption: true,
 }
 
 export const defaultSelectedTextMp3Name = 'note';
@@ -183,6 +189,33 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
           } else {
             new Notice('Menu items will be removed after the next reload.');
           }
+        });
+      });
+
+    // New setting for disabling playback control popover
+    new Setting(containerEl)
+      .setName('Disable floating playback controls')
+      .setDesc('Hide the floating playback control popover during audio playback.')
+      .addToggle(toggle => {
+        toggle.setValue(this.plugin.settings.disablePlaybackControlPopover);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.disablePlaybackControlPopover = value;
+          await this.plugin.saveSettings();
+          // Optionally, inform the user or trigger UI update if needed immediately
+          new Notice(`Floating playback controls ${value ? 'disabled' : 'enabled'}.`);
+        });
+      });
+
+    // New setting for enabling replay option
+    new Setting(containerEl)
+      .setName('Enable replay option')
+      .setDesc('Keep playback controls open after audio finishes to allow replaying.')
+      .addToggle(toggle => {
+        toggle.setValue(this.plugin.settings.enableReplayOption);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.enableReplayOption = value;
+          await this.plugin.saveSettings();
+          new Notice(`Replay option ${value ? 'enabled' : 'disabled'}.`);
         });
       });
 

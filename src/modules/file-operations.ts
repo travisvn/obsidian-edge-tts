@@ -9,10 +9,14 @@ import * as os from 'os';
 export class FileOperationsManager {
   private app: any;
   private settings: EdgeTTSPluginSettings;
+  private tempAudioPath: string | null = null;
 
-  constructor(app: any, settings: EdgeTTSPluginSettings) {
+  constructor(app: any, settings: EdgeTTSPluginSettings, tempAudioPath?: string) {
     this.app = app;
     this.settings = settings;
+    if (tempAudioPath) {
+      this.tempAudioPath = tempAudioPath;
+    }
   }
 
   /**
@@ -168,6 +172,70 @@ export class FileOperationsManager {
       console.error('Error saving MP3:', error);
       if (this.settings.showNotices) new Notice('Failed to save MP3 file.');
       return null;
+    }
+  }
+
+  /**
+   * Saves a buffer to the temporary audio file path.
+   * Returns the absolute path if successful, null otherwise.
+   */
+  async saveTempAudioFile(buffer: Buffer): Promise<string | null> {
+    if (!this.tempAudioPath) {
+      console.error('Temporary audio path is not set in FileOperationsManager.');
+      if (this.settings.showNotices) new Notice('Failed to save temporary audio: path not set.');
+      return null;
+    }
+
+    const adapter = this.app.vault.adapter;
+    if (!(adapter instanceof FileSystemAdapter)) {
+      console.error('File system adapter not available for temp audio.');
+      if (this.settings.showNotices) new Notice('Unable to save temporary audio file.');
+      return null;
+    }
+
+    try {
+      // Ensure the directory for the temp file exists (path includes filename)
+      const tempDir = path.dirname(this.tempAudioPath);
+      if (!await adapter.exists(tempDir)) {
+        await adapter.mkdir(tempDir);
+      }
+
+      await adapter.writeBinary(this.tempAudioPath, buffer);
+      // console.log('Temporary audio saved to:', this.tempAudioPath);
+      return this.app.vault.adapter.getResourcePath(this.tempAudioPath);
+    } catch (error) {
+      console.error('Error saving temporary audio file:', error);
+      if (this.settings.showNotices) new Notice('Failed to save temporary audio file.');
+      return null;
+    }
+  }
+
+  /**
+   * Gets the resource path for the temporary audio file.
+   */
+  getTempAudioFileResourcePath(): string | null {
+    if (!this.tempAudioPath) return null;
+    // Check if file exists before returning path, though getResourcePath might not require existence
+    // For now, assume if tempAudioPath is set, we can try to get its resource path.
+    return this.app.vault.adapter.getResourcePath(this.tempAudioPath);
+  }
+
+  /**
+   * Cleans up the temporary audio file.
+   */
+  async cleanupTempAudioFile(): Promise<void> {
+    if (!this.tempAudioPath) return;
+
+    const adapter = this.app.vault.adapter;
+    if (!(adapter instanceof FileSystemAdapter)) return;
+
+    try {
+      if (await adapter.exists(this.tempAudioPath)) {
+        await adapter.remove(this.tempAudioPath);
+        // console.log('Temporary audio file cleaned up:', this.tempAudioPath);
+      }
+    } catch (error) {
+      console.error('Error cleaning up temporary audio file:', error);
     }
   }
 

@@ -23,12 +23,21 @@ The **Obsidian Edge TTS Plugin** is a community plugin for [Obsidian](https://ob
 
 ## Features
 
-- Read selected text or entire notes aloud
-- Choose from a list of top voices or specify a custom voice
-- Adjust playback speed of voice over
-- Toggle optional notices for playback status
-- Option to generate mp3 file and embed it directly in note
-- Listen to voice samples before selecting a voice (via [tts.travisvn.com](https://tts.travisvn.com))
+-   Read selected text or entire notes aloud
+-   Choose from a list of top voices or specify a custom voice
+-   Adjust playback speed of voice over
+-   Toggle optional notices for playback status
+-   Option to generate mp3 file and embed it directly in note
+-   Listen to voice samples before selecting a voice (via [tts.travisvn.com](https://tts.travisvn.com))
+
+### Floating Playback Controls
+
+When you start a narration, a floating player will appear, providing convenient control over your audio playback.
+
+-   **Controls**: Play/pause, stop, jump backward/forward, and a seek bar to navigate through the audio.
+-   **Close**: Click the 'X' icon on the player to close it.
+-   **Streaming Indicator**: While the audio is streaming (before the full duration is known), the player will display "Streaming..." and the seek bar will be disabled. Once the full audio is loaded, the total duration will be shown. If the duration cannot be determined (e.g., for very long streams or live streams in the future), an infinity symbol (∞) will be displayed.
+-   **Draggable**: Click and drag any part of the player (except buttons and the seek bar) to move it around your workspace. Your preferred position is saved and restored for future sessions. The default position is the bottom-right of your screen. You can reset to this default using a command (see Usage).
 
 ## Installation
 
@@ -43,12 +52,14 @@ Alternatively, you can manually download the latest release from [GitHub Release
 
 ## Usage
 
-- Open the note you want to read aloud (or select the text)
-- Use the **Read note aloud** command from the command palette
-  - _or_ Click the ribbon icon (if enabled)
-  - _or_ Playback button in the status bar — this both starts a narration and then allows you to pause or resume once it's started
-  - _or_ Right-click on a file and select `Read note aloud`
-- Right-click on a file and select `Generate MP3` to save the narration to an mp3 and embed it in the note
+-   Open the note you want to read aloud (or select the text)
+-   Use the **Read note aloud** command from the command palette
+    -   _or_ Click the ribbon icon (if enabled)
+    -   _or_ Playback button in the status bar — this both starts a narration and then allows you to pause or resume once it's started
+    -   _or_ Right-click on a file and select `Read note aloud`
+-   Right-click on a file and select `Generate MP3` to save the narration to an mp3 and embed it in the note (if enabled).
+-   Use the **Show floating playback controls** command from the command palette to open the player if it has been closed. This command is idempotent, meaning if the player is already open, it won't do anything.
+-   Use the **Reset floating player position** command to move the player back to its default bottom-right screen position.
 
 ## Settings
 
@@ -57,15 +68,17 @@ To access the plugin settings:
 1. Go to **Settings** → **Community Plugins** → **Edge TTS**.
 2. Configure the following options:
 
-   - **Select voice**: Choose from a list of top voices.
-   - **Custom voice**: Manually enter a custom voice.
-   - **Playback speed**: Adjust playback speed multiplier.
-   - **Show notices**: Toggle notices for playback status and errors.
-   - **Show status bar button**: Toggle playback button in status bar.
-   - **Generate MP3**: Toggle settings related to the `Generate MP3` menu option.
-   - **Voice Samples**: Visit [tts.travisvn.com](https://tts.travisvn.com) to sample available voices.
+    - **Select voice**: Choose from a list of top voices.
+    - **Custom voice**: Manually enter a custom voice.
+    - **Playback speed**: Adjust playback speed multiplier.
+    - **Show notices**: Toggle notices for playback status and errors.
+    - **Show status bar button**: Toggle playback button in status bar.
+    - **Disable floating playback controls**: Hides the floating player during audio playback. If you close the player using the 'X' button, you can reopen it using the "Show floating playback controls" command.
+    - **Enable replay option**: Keeps the playback controls open after audio finishes to allow replaying.
+    - **Generate MP3**: Toggle settings related to the `Generate MP3` menu option.
+    - **Voice Samples**: Visit [tts.travisvn.com](https://tts.travisvn.com) to sample available voices.
 
-   ![Obsidian Edge TTS Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBoUkXv9BIyF8jY32HKoB45tuela0IdhLQ7JTvc)
+    ![Obsidian Edge TTS Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBoUkXv9BIyF8jY32HKoB45tuela0IdhLQ7JTvc)
 
 <h1 align="center">If you like this project, please <a href="https://github.com/travisvn/obsidian-edge-tts" target="_blank">give it a star on GitHub</a> ⭐️</h1>
 
@@ -82,11 +95,9 @@ Create audio narration for your Obsidian notes through our free mobile app
 	</a>
 </p>
 
-- Available on **iOS** and **Android**
-- Usage:
-  - Use the "share" functionality on any given note
-  - Select `Read Aloud AI` from the native mobile share menu
-  - Your markdown will be imported from the shared file and formatted like in the Obsidian desktop plugin
-  - Narration will playback instantly, and you can export the `.mp3` generated back into Obsidian
- 
-
+-   Available on **iOS** and **Android**
+-   Usage:
+    -   Use the "share" functionality on any given note
+    -   Select `Read Aloud AI` from the native mobile share menu
+    -   Your markdown will be imported from the shared file and formatted like in the Obsidian desktop plugin
+    -   Narration will playback instantly, and you can export the `.mp3` generated back into Obsidian

@@ -42,6 +42,8 @@ const context = await esbuild.context({
 	minify: prod,
 	loader: {
 		".svg": "text",
+		".tsx": "tsx",
+		".jsx": "jsx",
 	},
 });
 
