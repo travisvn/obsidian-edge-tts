@@ -30,15 +30,6 @@ The **Obsidian Edge TTS Plugin** is a community plugin for [Obsidian](https://ob
 -   Option to generate mp3 file and embed it directly in note
 -   Listen to voice samples before selecting a voice (via [tts.travisvn.com](https://tts.travisvn.com))
 
-### Floating Playback Controls
-
-When you start a narration, a floating player will appear, providing convenient control over your audio playback.
-
--   **Controls**: Play/pause, stop, jump backward/forward, and a seek bar to navigate through the audio.
--   **Close**: Click the 'X' icon on the player to close it.
--   **Streaming Indicator**: While the audio is streaming (before the full duration is known), the player will display "Streaming..." and the seek bar will be disabled. Once the full audio is loaded, the total duration will be shown. If the duration cannot be determined (e.g., for very long streams or live streams in the future), an infinity symbol (∞) will be displayed.
--   **Draggable**: Click and drag any part of the player (except buttons and the seek bar) to move it around your workspace. Your preferred position is saved and restored for future sessions. The default position is the bottom-right of your screen. You can reset to this default using a command (see Usage).
-
 ## Installation
 
 [Install Obsidian plugin](https://tts.travisvn.com/obsidian)
