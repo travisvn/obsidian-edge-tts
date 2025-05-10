@@ -34,15 +34,15 @@ export function escapeXml(text: string): string {
     .replace(/'/g, '&apos;'); // Escape "'"
 }
 
-export function filterMarkdown(text: string, overrideAmpersandEscape = false): string {
+export function filterMarkdown(text: string, overrideAmpersandEscape = false, overrideCodeBlockRemoval = false): string {
   // Remove frontmatter (e.g., YAML between triple dashes "---")
   const noFrontmatter = text.replace(/^-{3}[\s\S]*?-{3}\n?/, '');
 
   // Remove URLs
   const noUrls = noFrontmatter.replace(/https?:\/\/[^\s]+/g, '');
 
-  // Remove code blocks (e.g., fenced with ``` or indented by 4 spaces)
-  const noCodeBlocks = noUrls.replace(/```[\s\S]*?```/g, '').replace(/^( {4}|\t).+/gm, '');
+  // Remove code blocks (e.g., fenced with ```)
+  const noCodeBlocks = noUrls.replace(/```[\s\S]*?```/g, '');
 
   // Remove inline markdown syntax
   let cleanedMarkdown = noCodeBlocks
