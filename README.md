@@ -28,6 +28,7 @@ The **Obsidian Edge TTS Plugin** is a community plugin for [Obsidian](https://ob
 -   Adjust playback speed of voice over
 -   Toggle optional notices for playback status
 -   Option to generate mp3 file and embed it directly in note
+-   **Playback queue**: Add multiple notes to a queue for continuous playback with loop and auto-scroll options
 -   Listen to voice samples before selecting a voice (via [tts.travisvn.com](https://tts.travisvn.com))
 
 ## Installation
@@ -48,6 +49,7 @@ Alternatively, you can manually download the latest release from [GitHub Release
     -   _or_ Click the ribbon icon (if enabled)
     -   _or_ Playback button in the status bar — this both starts a narration and then allows you to pause or resume once it's started
     -   _or_ Right-click on a file and select `Read note aloud`
+-   Right-click on a file and select `Add to playback queue` to queue multiple notes for continuous playback
 -   Right-click on a file and select `Generate MP3` to save the narration to an mp3 and embed it in the note (if enabled).
 -   Use the **Show floating playback controls** command from the command palette to open the player if it has been closed. This command is idempotent, meaning if the player is already open, it won't do anything.
 -   Use the **Reset floating player position** command to move the player back to its default bottom-right screen position.
@@ -66,10 +68,11 @@ To access the plugin settings:
     - **Show status bar button**: Toggle playback button in status bar.
     - **Disable floating playback controls**: Hides the floating player during audio playback. If you close the player using the 'X' button, you can reopen it using the "Show floating playback controls" command.
     - **Enable replay option**: Keeps the playback controls open after audio finishes to allow replaying.
+    - **Enable queue feature**: Toggle the playback queue functionality for continuous playback of multiple notes.
     - **Generate MP3**: Toggle settings related to the `Generate MP3` menu option.
     - **Voice Samples**: Visit [tts.travisvn.com](https://tts.travisvn.com) to sample available voices.
 
-    ![Obsidian Edge TTS Plugin Settings Screenshot](https://utfs.io/f/MMMHiQ1TQaBoUkXv9BIyF8jY32HKoB45tuela0IdhLQ7JTvc)
+    ![Obsidian Edge TTS Plugin Settings Screenshot](https://xx95vnikv6.ufs.sh/f/MMMHiQ1TQaBocgGqdi5Yrp8QZkBUquOFL65GVCWh4za1Ij2l)
 
 <h1 align="center">If you like this project, please <a href="https://github.com/travisvn/obsidian-edge-tts" target="_blank">give it a star on GitHub</a> ⭐️</h1>
 
