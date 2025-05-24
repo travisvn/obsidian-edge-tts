@@ -2,10 +2,14 @@ import React from 'react';
 import ReactDOMClient from 'react-dom/client';
 import { FloatingPlayerUI } from '../ui/FloatingPlayerUI';
 import type { AudioPlaybackManager } from './audio-playback'; // Using type import
+import type { QueueUIManager } from './QueueUIManager';
+import { DIMENSION_ESTIMATES } from './constants';
 
 interface FloatingUIManagerOptions {
   audioManager: AudioPlaybackManager; // To access playback state and controls
   savePositionCallback: (position: { x: number; y: number }) => Promise<void>; // Added callback
+  queueUIManager?: QueueUIManager;
+  enableQueueFeature: boolean; // Add queue feature setting
 }
 
 export class FloatingUIManager {
@@ -15,6 +19,8 @@ export class FloatingUIManager {
   private lastPosition: { x: number, y: number } | undefined = undefined;
   private isPlayerVisible = false;
   private savePosition: (position: { x: number; y: number }) => Promise<void>; // Store callback
+  private queueUIManager?: QueueUIManager;
+  private enableQueueFeature: boolean; // Store queue feature setting
   private currentPlaybackState: { currentTime: number, duration: number, isPlaying: boolean, isLoading: boolean } = {
     currentTime: 0,
     duration: 0,
@@ -22,14 +28,14 @@ export class FloatingUIManager {
     isLoading: false,
   };
 
-  private readonly PLAYER_WIDTH_ESTIMATE = 270; // Approximate width of the player
-  private readonly PLAYER_HEIGHT_ESTIMATE = 95; // Approximate height of the player
   private resizeDebounceTimeout: number | null = null;
   private readonly RESIZE_DEBOUNCE_DELAY = 250; // milliseconds
 
   constructor(options: FloatingUIManagerOptions) {
     this.audioManager = options.audioManager;
     this.savePosition = options.savePositionCallback; // Store callback
+    this.queueUIManager = options.queueUIManager;
+    this.enableQueueFeature = options.enableQueueFeature; // Store queue feature setting
     this.handleWindowResize = this.handleWindowResize.bind(this); // Bind for the event listener
     window.addEventListener('resize', this.debouncedWindowResize);
     this.renderComponent();
@@ -52,12 +58,16 @@ export class FloatingUIManager {
     const { innerWidth, innerHeight } = window;
 
     // Check if the player is significantly out of viewport
-    // True if less than 20px of the player is visible on any side
+    // The player is positioned at (x, y) and extends to (x + width, y + height)
+    // We want to reset if less than 20px of the player is visible on any side
+    const playerRight = this.lastPosition.x + DIMENSION_ESTIMATES.PLAYER_WIDTH;
+    const playerBottom = this.lastPosition.y + DIMENSION_ESTIMATES.PLAYER_HEIGHT;
+
     const isOutOfBounds =
-      this.lastPosition.x > innerWidth - 20 || // Player's left edge is past the right viewport edge (minus 20px buffer)
-      this.lastPosition.y > innerHeight - 20 || // Player's top edge is past the bottom viewport edge (minus 20px buffer)
-      this.lastPosition.x < -this.PLAYER_WIDTH_ESTIMATE + 20 || // Player's right edge is past the left viewport edge (plus 20px buffer)
-      this.lastPosition.y < -this.PLAYER_HEIGHT_ESTIMATE + 20;   // Player's bottom edge is past the top viewport edge (plus 20px buffer)
+      this.lastPosition.x > innerWidth - DIMENSION_ESTIMATES.RIGHT_MARGIN || // Left edge is past the right viewport edge (minus 20px buffer)
+      this.lastPosition.y > innerHeight - DIMENSION_ESTIMATES.BOTTOM_MARGIN || // Top edge is past the bottom viewport edge (minus 20px buffer)
+      playerRight < DIMENSION_ESTIMATES.RIGHT_MARGIN || // Right edge is past the left viewport edge (plus 20px buffer)
+      playerBottom < DIMENSION_ESTIMATES.BOTTOM_MARGIN;   // Bottom edge is past the top viewport edge (plus 20px buffer)
 
     if (isOutOfBounds) {
       // console.log("Floating player out of bounds due to window resize, resetting position.");
@@ -124,8 +134,8 @@ export class FloatingUIManager {
   }
 
   public resetPlayerPosition(): void {
-    const defaultX = typeof window !== 'undefined' ? window.innerWidth - 290 : 50;
-    const defaultY = typeof window !== 'undefined' ? window.innerHeight - 135 : 50;
+    const defaultX = typeof window !== 'undefined' ? window.innerWidth - DIMENSION_ESTIMATES.PLAYER_WIDTH : 50;
+    const defaultY = typeof window !== 'undefined' ? window.innerHeight - DIMENSION_ESTIMATES.PLAYER_HEIGHT : 50;
     this.lastPosition = { x: defaultX, y: defaultY };
     this.savePosition(this.lastPosition).catch(error => {
       console.error("Failed to save player position on reset:", error);
@@ -137,10 +147,19 @@ export class FloatingUIManager {
 
   private renderComponent() {
     if (this.reactRoot) {
-      const defaultX = typeof window !== 'undefined' ? window.innerWidth - 290 : 50;
-      const defaultY = typeof window !== 'undefined' ? window.innerHeight - 135 : 50;
+      const defaultX = typeof window !== 'undefined' ? window.innerWidth - DIMENSION_ESTIMATES.PLAYER_WIDTH : 50;
+      const defaultY = typeof window !== 'undefined' ? window.innerHeight - DIMENSION_ESTIMATES.PLAYER_HEIGHT : 50;
 
       const playerInitialPosition = this.lastPosition ?? { x: defaultX, y: defaultY };
+
+      // Get queue information from audio manager (only if queue feature is enabled)
+      const queueStatus = this.enableQueueFeature ? this.audioManager.getQueueStatus() : { queue: [], currentIndex: -1, isPlayingFromQueue: false };
+      const queueInfo = (this.enableQueueFeature && queueStatus.isPlayingFromQueue) ? {
+        currentIndex: queueStatus.currentIndex,
+        totalItems: queueStatus.queue.length,
+        currentTitle: queueStatus.queue[queueStatus.currentIndex]?.title,
+        isPlayingFromQueue: queueStatus.isPlayingFromQueue
+      } : undefined;
 
       this.reactRoot.render(
         React.createElement(FloatingPlayerUI, {
@@ -165,6 +184,9 @@ export class FloatingUIManager {
           onJumpForward: () => this.audioManager.jumpForward(),
           onJumpBackward: () => this.audioManager.jumpBackward(),
           isLoading: this.currentPlaybackState.isLoading, // Pass isLoading state
+          queueInfo: queueInfo, // Pass queue information
+          onToggleQueue: (this.enableQueueFeature && this.queueUIManager) ? () => this.queueUIManager?.toggleQueueVisibility() : undefined, // Toggle queue callback
+          isQueueVisible: (this.enableQueueFeature && this.queueUIManager) ? this.queueUIManager.getIsQueueVisible() : false, // Pass queue visibility state
         })
       );
     }
@@ -183,6 +205,17 @@ export class FloatingUIManager {
 
   public getCurrentPosition(): { x: number; y: number } | undefined {
     return this.lastPosition;
+  }
+
+  public setQueueUIManager(queueUIManager: QueueUIManager): void {
+    this.queueUIManager = queueUIManager;
+  }
+
+  public updateQueueFeatureEnabled(enabled: boolean): void {
+    this.enableQueueFeature = enabled;
+    if (this.isPlayerVisible) {
+      this.renderComponent(); // Re-render to update queue button visibility
+    }
   }
 
   public destroy() {

@@ -182,6 +182,24 @@ export class UIManager {
             });
         });
 
+        if (this.settings.enableQueueFeature) {
+          menu.addItem((item: any) => {
+            item
+              .setTitle('Add to playback queue')
+              .setIcon('list-plus')
+              .onClick(async () => {
+                const content = await this.plugin.fileManager.extractFileContent(file.path);
+                if (content) {
+                  this.audioManager.addToQueue(content, file.basename);
+                  // Show queue manager if it's not visible
+                  if (this.plugin.queueUIManager && !this.plugin.queueUIManager.getIsQueueVisible()) {
+                    this.plugin.queueUIManager.showQueue();
+                  }
+                }
+              });
+          });
+        }
+
         if (this.settings.generateMP3) {
           menu.addItem((item: any) => {
             item
@@ -205,6 +223,27 @@ export class UIManager {
               this.plugin.readNoteAloud(editor, view);
             });
         });
+
+        if (this.settings.enableQueueFeature) {
+          menu.addItem((item: any) => {
+            item
+              .setTitle('Add selection to queue')
+              .setIcon('list-plus')
+              .onClick(async () => {
+                const selectedText = editor.getSelection();
+                const noteTitle = view.file?.basename || 'Untitled';
+                if (selectedText.trim()) {
+                  this.audioManager.addToQueue(selectedText, `${noteTitle} (selection)`);
+                } else {
+                  this.audioManager.addToQueue(editor.getValue(), noteTitle);
+                }
+                // Show queue manager if it's not visible
+                if (this.plugin.queueUIManager && !this.plugin.queueUIManager.getIsQueueVisible()) {
+                  this.plugin.queueUIManager.showQueue();
+                }
+              });
+          });
+        }
 
         if (this.settings.generateMP3) {
           menu.addItem((item: any) => {

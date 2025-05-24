@@ -6,6 +6,7 @@ import { UIManager } from './modules/ui-components';
 import { TTSEngine, TTSTaskStatus } from './modules/tts-engine';
 import { OUTPUT_FORMAT } from 'edge-tts-client';
 import { FloatingUIManager } from './modules/FloatingUIManager';
+import { QueueUIManager } from './modules/QueueUIManager';
 
 export default class EdgeTTSPlugin extends Plugin {
 	settings: EdgeTTSPluginSettings;
@@ -14,6 +15,7 @@ export default class EdgeTTSPlugin extends Plugin {
 	uiManager: UIManager;
 	ttsEngine: TTSEngine;
 	floatingUIManager: FloatingUIManager;
+	queueUIManager?: QueueUIManager;
 
 	// Task tracking for MP3 generation
 	private mp3GenerationTasks: Map<string, { taskId: string, editor?: Editor, filePath?: string }> = new Map();
@@ -55,14 +57,31 @@ export default class EdgeTTSPlugin extends Plugin {
 			this.app
 		);
 
-		// 8. Initialize FloatingUIManager
+		// 8. Initialize FloatingUIManager (we'll set queueUIManager reference later)
 		this.floatingUIManager = new FloatingUIManager({
 			audioManager: this.audioManager,
 			savePositionCallback: async (position) => {
 				this.settings.floatingPlayerPosition = position;
 				await this.saveSettings();
-			}
+			},
+			enableQueueFeature: this.settings.enableQueueFeature
 		});
+
+		// 8b. Initialize QueueUIManager (only if queue feature is enabled)
+		if (this.settings.enableQueueFeature) {
+			this.queueUIManager = new QueueUIManager({
+				audioManager: this.audioManager,
+				savePositionCallback: async (position) => {
+					this.settings.queueManagerPosition = position;
+					await this.saveSettings();
+				}
+			});
+
+			// 8c. Connect the queue UI manager to the floating UI manager
+			if (this.queueUIManager) {
+				this.floatingUIManager.setQueueUIManager(this.queueUIManager);
+			}
+		}
 
 		// 9. Now, properly set the callbacks in AudioPlaybackManager
 		this.audioManager.setFloatingPlayerCallbacks(
@@ -71,12 +90,29 @@ export default class EdgeTTSPlugin extends Plugin {
 			(data) => this.floatingUIManager.updatePlayerState(data) // Pass data through
 		);
 
+		// 9b. Set up queue change callback to update queue UI (only if queue feature is enabled)
+		if (this.settings.enableQueueFeature && this.queueUIManager) {
+			this.audioManager.setQueueChangeCallback(() => {
+				this.queueUIManager?.updateQueue();
+			});
+
+			// 9c. Set up queue UI update callback for playback state changes
+			this.audioManager.setQueueUIUpdateCallback(() => {
+				this.queueUIManager?.updateQueue();
+			});
+		}
+
 		// 10. Initialize UIManager
 		this.uiManager = new UIManager(this, this.settings, this.audioManager, this.ttsEngine);
 
 		// 11. Set initial floating player position from loaded settings
 		if (this.settings.floatingPlayerPosition) {
 			this.floatingUIManager.setInitialSavedPosition(this.settings.floatingPlayerPosition);
+		}
+
+		// 11b. Set initial queue position from loaded settings (only if queue feature is enabled)
+		if (this.settings.enableQueueFeature && this.queueUIManager && this.settings.queueManagerPosition) {
+			this.queueUIManager.setInitialSavedPosition(this.settings.queueManagerPosition);
 		}
 
 		// Add settings tab
@@ -119,6 +155,48 @@ export default class EdgeTTSPlugin extends Plugin {
 			}
 		});
 
+		// Add enhanced keyboard shortcuts for playback control
+		this.addCommand({
+			id: 'pause-resume-playback',
+			name: 'Pause/Resume playback',
+			hotkeys: [{ modifiers: ['Ctrl'], key: ' ' }], // Ctrl+Space like media players
+			callback: () => {
+				if (this.audioManager.isPlaybackPaused()) {
+					this.audioManager.resumePlayback();
+				} else {
+					this.audioManager.pausePlayback();
+				}
+			}
+		});
+
+		this.addCommand({
+			id: 'jump-forward-10s',
+			name: 'Jump forward 10 seconds',
+			hotkeys: [{ modifiers: ['Ctrl'], key: 'ArrowRight' }],
+			callback: () => this.audioManager.jumpForward()
+		});
+
+		this.addCommand({
+			id: 'jump-backward-10s',
+			name: 'Jump backward 10 seconds',
+			hotkeys: [{ modifiers: ['Ctrl'], key: 'ArrowLeft' }],
+			callback: () => this.audioManager.jumpBackward()
+		});
+
+		this.addCommand({
+			id: 'read-selected-text',
+			name: 'Read selected text aloud',
+			hotkeys: [{ modifiers: ['Ctrl', 'Shift'], key: 'r' }],
+			editorCallback: (editor, view) => {
+				const selectedText = editor.getSelection();
+				if (selectedText.trim()) {
+					this.audioManager.startPlayback(selectedText);
+				} else {
+					if (this.settings.showNotices) new Notice('No text selected.');
+				}
+			}
+		});
+
 		this.addCommand({
 			id: 'show-floating-playback-controls',
 			name: 'Show floating playback controls',
@@ -137,6 +215,123 @@ export default class EdgeTTSPlugin extends Plugin {
 				if (this.settings.showNotices) new Notice('Floating player position reset.');
 			}
 		});
+
+		// Queue management commands (only if queue feature is enabled)
+		if (this.settings.enableQueueFeature) {
+			this.addCommand({
+				id: 'add-note-to-queue',
+				name: 'Add current note to playback queue',
+				editorCallback: (editor, view) => {
+					const noteTitle = view.file?.basename || 'Untitled';
+					const content = editor.getValue();
+					this.audioManager.addToQueue(content, noteTitle);
+				}
+			});
+
+			this.addCommand({
+				id: 'add-selection-to-queue',
+				name: 'Add selected text to playback queue',
+				editorCallback: (editor, view) => {
+					const selectedText = editor.getSelection();
+					if (selectedText.trim()) {
+						const noteTitle = view.file?.basename || 'Untitled';
+						this.audioManager.addToQueue(selectedText, `${noteTitle} (selection)`);
+					} else {
+						if (this.settings.showNotices) new Notice('No text selected.');
+					}
+				}
+			});
+
+			this.addCommand({
+				id: 'play-queue',
+				name: 'Play entire queue',
+				callback: () => {
+					this.audioManager.playQueue();
+				}
+			});
+
+			this.addCommand({
+				id: 'clear-queue',
+				name: 'Clear playback queue',
+				callback: () => {
+					this.audioManager.clearQueue();
+				}
+			});
+
+			this.addCommand({
+				id: 'show-queue-status',
+				name: 'Show queue status',
+				callback: () => {
+					const status = this.audioManager.getQueueStatus();
+					const message = status.queue.length === 0
+						? 'Playback queue is empty.'
+						: `Queue has ${status.queue.length} items. ${status.isPlayingFromQueue ? `Currently playing item ${status.currentIndex + 1}.` : 'Not currently playing from queue.'}`;
+					if (this.settings.showNotices) new Notice(message);
+				}
+			});
+		}
+
+		// Sleep timer commands
+		this.addCommand({
+			id: 'set-sleep-timer-15min',
+			name: 'Set sleep timer (15 minutes)',
+			callback: () => {
+				this.audioManager.setSleepTimer(15);
+			}
+		});
+
+		this.addCommand({
+			id: 'set-sleep-timer-30min',
+			name: 'Set sleep timer (30 minutes)',
+			callback: () => {
+				this.audioManager.setSleepTimer(30);
+			}
+		});
+
+		this.addCommand({
+			id: 'set-sleep-timer-60min',
+			name: 'Set sleep timer (60 minutes)',
+			callback: () => {
+				this.audioManager.setSleepTimer(60);
+			}
+		});
+
+		this.addCommand({
+			id: 'cancel-sleep-timer',
+			name: 'Cancel sleep timer',
+			callback: () => {
+				this.audioManager.cancelSleepTimer();
+			}
+		});
+
+		// Queue UI management commands (only if queue feature is enabled)
+		if (this.settings.enableQueueFeature && this.queueUIManager) {
+			this.addCommand({
+				id: 'show-queue-manager',
+				name: 'Show queue manager',
+				hotkeys: [{ modifiers: ['Ctrl', 'Shift'], key: 'q' }],
+				callback: () => {
+					this.queueUIManager?.showQueue();
+				}
+			});
+
+			this.addCommand({
+				id: 'toggle-queue-manager',
+				name: 'Toggle queue manager',
+				callback: () => {
+					this.queueUIManager?.toggleQueueVisibility();
+				}
+			});
+
+			this.addCommand({
+				id: 'reset-queue-position',
+				name: 'Reset queue manager position',
+				callback: () => {
+					this.queueUIManager?.resetQueuePosition();
+					if (this.settings.showNotices) new Notice('Queue manager position reset.');
+				}
+			});
+		}
 	}
 
 	/**
@@ -267,7 +462,7 @@ export default class EdgeTTSPlugin extends Plugin {
 		this.fileManager.updateSettings(this.settings);
 		this.uiManager.updateSettings(this.settings);
 		this.ttsEngine.updateSettings(this.settings);
-		// If FloatingUIManager needs settings updates, add its updater here
+		this.floatingUIManager.updateQueueFeatureEnabled(this.settings.enableQueueFeature);
 	}
 
 	onunload() {
@@ -276,17 +471,34 @@ export default class EdgeTTSPlugin extends Plugin {
 		this.audioManager.stopPlayback(); // This will also trigger hidePlayer if popover is not disabled, which saves position
 		this.uiManager.removeStatusBarButton();
 
-		// Save position one last time on unload, if available and player was visible or position changed recently
-		// The hidePlayer and onDragEnd should cover most cases. This is a fallback.
-		const currentPosition = this.floatingUIManager.getCurrentPosition();
-		if (currentPosition &&
-			(this.settings.floatingPlayerPosition?.x !== currentPosition.x ||
-				this.settings.floatingPlayerPosition?.y !== currentPosition.y)) {
-			this.settings.floatingPlayerPosition = currentPosition;
-			// Directly save data to avoid triggering full saveSettings and potential side effects during unload
-			this.saveData(this.settings).catch(error => console.error("Failed to save player position on unload:", error));
+		// Save positions one last time on unload
+		const currentPlayerPosition = this.floatingUIManager.getCurrentPosition();
+		const currentQueuePosition = this.queueUIManager?.getCurrentPosition();
+		let shouldSave = false;
+
+		if (currentPlayerPosition &&
+			(this.settings.floatingPlayerPosition?.x !== currentPlayerPosition.x ||
+				this.settings.floatingPlayerPosition?.y !== currentPlayerPosition.y)) {
+			this.settings.floatingPlayerPosition = currentPlayerPosition;
+			shouldSave = true;
 		}
+
+		if (currentQueuePosition &&
+			(this.settings.queueManagerPosition?.x !== currentQueuePosition.x ||
+				this.settings.queueManagerPosition?.y !== currentQueuePosition.y)) {
+			this.settings.queueManagerPosition = currentQueuePosition;
+			shouldSave = true;
+		}
+
+		if (shouldSave) {
+			// Directly save data to avoid triggering full saveSettings and potential side effects during unload
+			this.saveData(this.settings).catch(error => console.error("Failed to save UI positions on unload:", error));
+		}
+
 		this.floatingUIManager.destroy();
+		if (this.queueUIManager) {
+			this.queueUIManager.destroy();
+		}
 
 		// No async cleanup in onunload for the temp file.
 		// It will be cleaned up on next load by cleanupTempAudioFile() in fileManager.

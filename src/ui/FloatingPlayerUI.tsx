@@ -39,6 +39,9 @@ interface FloatingPlayerUIProps {
   onJumpForward?: () => void;
   onJumpBackward?: () => void;
   isLoading?: boolean;
+  queueInfo?: { currentIndex: number; totalItems: number; currentTitle?: string; isPlayingFromQueue: boolean };
+  onToggleQueue?: () => void;
+  isQueueVisible?: boolean;
 }
 
 export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
@@ -57,6 +60,9 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
   onJumpForward,
   onJumpBackward,
   isLoading = false,
+  queueInfo,
+  onToggleQueue,
+  isQueueVisible = false,
 }) => {
   const [position, setPosition] = useState(initialPosition);
   const [isDragging, setIsDragging] = useState(false);
@@ -155,6 +161,24 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
         <ObsidianIcon icon="x" size={16} className="floating-player-close-button-icon" />
       </div>
 
+      {onToggleQueue && (
+        <div
+          onClick={onToggleQueue}
+          className={`floating-player-queue-button ${
+            // Use top position if there's queue info or streaming text that would provide context
+            // Otherwise use bottom position to avoid overlapping with progress bar
+            (queueInfo && queueInfo.isPlayingFromQueue) || isLoading ? 'top-position' : 'bottom-position'
+            }`}
+          aria-label={isQueueVisible ? "Hide Queue" : "Show Queue"}
+        >
+          <ObsidianIcon
+            // icon={isQueueVisible ? "x" : "list-music"} 
+            icon="list-music"
+            size={12}
+          />
+        </div>
+      )}
+
       {!isLoading && (
         <div onClick={onStop} aria-label="Stop" className="player-control-button player-stop-button">
           <ObsidianIcon icon="square" size={16} className="floating-player-close-button-icon" />
@@ -164,6 +188,14 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
       <div className="player-content">
         {/* Status text can be removed or kept based on preference, for now it's simplified */}
         {/* <p>{isPaused ? (isAtEnd ? "Finished" : "Paused") : "Playing..."}</p> */}
+
+        {/* Queue information */}
+        {queueInfo && queueInfo.isPlayingFromQueue && (
+          <div className="queue-info" style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textAlign: 'center' }}>
+            Queue: {queueInfo.currentIndex + 1}/{queueInfo.totalItems}
+            {queueInfo.currentTitle && <div style={{ fontSize: '10px', opacity: 0.8 }}>{queueInfo.currentTitle}</div>}
+          </div>
+        )}
 
         {duration > 0 && (
           <div className="player-progress">

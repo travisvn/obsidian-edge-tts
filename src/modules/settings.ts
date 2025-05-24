@@ -27,6 +27,9 @@ export interface EdgeTTSPluginSettings {
   floatingPlayerPosition: { x: number; y: number } | null;
   disablePlaybackControlPopover: boolean;
   enableReplayOption: boolean;
+  enableQueueFeature: boolean;
+  queueManagerPosition: { x: number; y: number } | null;
+  autoPauseOnWindowBlur: boolean;
 }
 
 // Top voices to be displayed in the dropdown
@@ -63,6 +66,9 @@ export const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
   floatingPlayerPosition: null,
   disablePlaybackControlPopover: false,
   enableReplayOption: true,
+  enableQueueFeature: true,
+  queueManagerPosition: null,
+  autoPauseOnWindowBlur: false,
 }
 
 export const defaultSelectedTextMp3Name = 'note';
@@ -216,6 +222,32 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
           this.plugin.settings.enableReplayOption = value;
           await this.plugin.saveSettings();
           new Notice(`Replay option ${value ? 'enabled' : 'disabled'}.`);
+        });
+      });
+
+    // New setting for enabling queue feature
+    new Setting(containerEl)
+      .setName('Enable queue feature')
+      .setDesc('Enable the playback queue functionality including queue manager and queue-related commands.')
+      .addToggle(toggle => {
+        toggle.setValue(this.plugin.settings.enableQueueFeature);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.enableQueueFeature = value;
+          await this.plugin.saveSettings();
+          new Notice(`Queue feature ${value ? 'enabled' : 'disabled'}. Restart Obsidian to fully apply changes.`);
+        });
+      });
+
+    // New setting for auto-pause on window blur
+    new Setting(containerEl)
+      .setName('Auto-pause on window focus loss')
+      .setDesc('Automatically pause playback when Obsidian loses focus and resume when it regains focus.')
+      .addToggle(toggle => {
+        toggle.setValue(this.plugin.settings.autoPauseOnWindowBlur);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.autoPauseOnWindowBlur = value;
+          await this.plugin.saveSettings();
+          new Notice(`Auto-pause on focus loss ${value ? 'enabled' : 'disabled'}.`);
         });
       });
 

@@ -20,6 +20,19 @@ export class AudioPlaybackManager {
   private updateFloatingPlayerCallback: (data: { currentTime: number, duration: number, isPlaying: boolean, isLoading: boolean }) => void;
   private currentPlaybackId = 0;
 
+  // Auto-pause functionality
+  private wasPlayingBeforeBlur = false;
+
+  // Playback queue functionality
+  private playbackQueue: Array<{ text: string, title?: string }> = [];
+  private currentQueueIndex = -1;
+  private isPlayingFromQueue = false;
+  private loopEnabled = false; // Loop queue functionality
+
+  // Sleep timer functionality
+  private sleepTimerTimeout: number | null = null;
+  private sleepTimerMinutes = 0;
+
   // MSE specific properties
   private mediaSource: MediaSource | null = null;
   private sourceBuffer: SourceBuffer | null = null;
@@ -29,6 +42,12 @@ export class AudioPlaybackManager {
   private isStreamingWithMSE = false;
   private isSwitchingToFullFile = false;
   private streamedPlaybackTimeBeforeSwitch = 0;
+
+  // Queue change notification callback
+  private queueChangeCallback?: () => void;
+
+  // Queue UI update callback (for playback state changes)
+  private queueUIUpdateCallback?: () => void;
 
   constructor(
     settings: EdgeTTSPluginSettings,
@@ -49,6 +68,7 @@ export class AudioPlaybackManager {
     this.audioElement = new Audio();
     this.audioElement.preload = 'auto';
     this.setupAudioEventListeners();
+    this.setupAutoPauseListeners();
   }
 
   private setupAudioEventListeners(): void {
@@ -118,6 +138,14 @@ export class AudioPlaybackManager {
 
       // Original onended logic (for when playing the full MP3 file)
       if (this.settings.showNotices) new Notice('Finished reading aloud.');
+
+      // Check if we should play next item in queue
+      if (this.isPlayingFromQueue) {
+        // Small delay before playing next item
+        setTimeout(() => this.playNextInQueue(), 1000);
+        return;
+      }
+
       if (this.settings.enableReplayOption && !this.settings.disablePlaybackControlPopover) {
         this.isPaused = true;
         this.updateStatusBarCallback(false);
@@ -164,6 +192,23 @@ export class AudioPlaybackManager {
 
     // Listener for SourceBuffer updates
     // This needs to be added when sourceBuffer is created.
+  }
+
+  private setupAutoPauseListeners(): void {
+    // Auto-pause when user switches away from Obsidian
+    window.addEventListener('blur', () => {
+      if (this.settings.autoPauseOnWindowBlur && !this.audioElement.paused) {
+        this.wasPlayingBeforeBlur = true;
+        this.pausePlayback();
+      }
+    });
+
+    window.addEventListener('focus', () => {
+      if (this.settings.autoPauseOnWindowBlur && this.wasPlayingBeforeBlur && this.audioElement.paused) {
+        this.wasPlayingBeforeBlur = false;
+        this.resumePlayback();
+      }
+    });
   }
 
   /**
@@ -488,6 +533,7 @@ export class AudioPlaybackManager {
     this.streamedPlaybackTimeBeforeSwitch = 0;
     this.mseAudioQueue = [];
     this.isAppendingBuffer = false;
+    this.cancelSleepTimer(); // Cancel sleep timer when stopping
 
     if (this.mediaSource) {
       if (this.mediaSource.readyState === 'open' && this.sourceBuffer && this.sourceBuffer.updating) {
@@ -659,5 +705,266 @@ export class AudioPlaybackManager {
         updateFloatingPlayerCallback(data);
       }
     };
+  }
+
+  /**
+   * Set callback for queue changes
+   */
+  public setQueueChangeCallback(callback: () => void): void {
+    this.queueChangeCallback = callback;
+  }
+
+  /**
+   * Set callback for queue UI updates (playback state changes)
+   */
+  public setQueueUIUpdateCallback(callback: () => void): void {
+    this.queueUIUpdateCallback = callback;
+  }
+
+  /**
+   * Notify that queue has changed
+   */
+  private notifyQueueChange(): void {
+    if (this.queueChangeCallback) {
+      this.queueChangeCallback();
+    }
+  }
+
+  /**
+   * Notify that queue UI should update (playback state changes)
+   */
+  private notifyQueueUIUpdate(): void {
+    if (this.queueUIUpdateCallback) {
+      this.queueUIUpdateCallback();
+    }
+  }
+
+  /**
+   * Add text to playback queue
+   */
+  addToQueue(text: string, title?: string): void {
+    this.playbackQueue.push({ text, title });
+    if (this.settings.showNotices) {
+      new Notice(`Added "${title || 'text'}" to playback queue (${this.playbackQueue.length} items)`);
+    }
+    this.notifyQueueChange();
+  }
+
+  /**
+   * Start playing the queue from the beginning
+   */
+  async playQueue(): Promise<void> {
+    if (this.playbackQueue.length === 0) {
+      if (this.settings.showNotices) new Notice('Playback queue is empty.');
+      return;
+    }
+
+    this.currentQueueIndex = 0;
+    this.isPlayingFromQueue = true;
+    this.notifyQueueUIUpdate(); // Update queue UI when starting queue playback
+    await this.playCurrentQueueItem();
+  }
+
+  /**
+   * Play the next item in queue automatically
+   */
+  private async playNextInQueue(): Promise<void> {
+    if (!this.isPlayingFromQueue || this.currentQueueIndex >= this.playbackQueue.length - 1) {
+      if (this.loopEnabled && this.playbackQueue.length > 0) {
+        // Loop back to the beginning
+        this.currentQueueIndex = 0;
+        this.notifyQueueUIUpdate(); // Update queue UI to show looping
+        if (this.settings.showNotices) new Notice('Queue looping - restarting from beginning.');
+        await this.playCurrentQueueItem();
+        return;
+      } else {
+        // Normal end of queue
+        this.isPlayingFromQueue = false;
+        this.currentQueueIndex = -1;
+        this.notifyQueueUIUpdate(); // Update queue UI when queue finishes
+        if (this.settings.showNotices) new Notice('Finished playing queue.');
+        return;
+      }
+    }
+
+    this.currentQueueIndex++;
+    this.notifyQueueUIUpdate(); // Update queue UI to show new playing item
+    await this.playCurrentQueueItem();
+  }
+
+  /**
+   * Play the current queue item
+   */
+  private async playCurrentQueueItem(): Promise<void> {
+    const item = this.playbackQueue[this.currentQueueIndex];
+    if (item) {
+      if (this.settings.showNotices) {
+        new Notice(`Playing ${this.currentQueueIndex + 1}/${this.playbackQueue.length}: ${item.title || 'Untitled'}`);
+      }
+      await this.startPlayback(item.text);
+    }
+  }
+
+  /**
+   * Clear the playback queue
+   */
+  clearQueue(): void {
+    this.playbackQueue = [];
+    this.currentQueueIndex = -1;
+    this.isPlayingFromQueue = false;
+    if (this.settings.showNotices) new Notice('Playback queue cleared.');
+    this.notifyQueueChange();
+    this.notifyQueueUIUpdate(); // Update queue UI when clearing
+  }
+
+  /**
+   * Get current queue status
+   */
+  getQueueStatus(): { queue: Array<{ text: string, title?: string }>, currentIndex: number, isPlayingFromQueue: boolean } {
+    return {
+      queue: [...this.playbackQueue],
+      currentIndex: this.currentQueueIndex,
+      isPlayingFromQueue: this.isPlayingFromQueue
+    };
+  }
+
+  /**
+   * Play a specific item in the queue by index
+   */
+  async playQueueItem(index: number): Promise<void> {
+    if (index < 0 || index >= this.playbackQueue.length) {
+      if (this.settings.showNotices) new Notice('Invalid queue item index.');
+      return;
+    }
+
+    this.currentQueueIndex = index;
+    this.isPlayingFromQueue = true;
+    this.notifyQueueUIUpdate(); // Update queue UI to show new playing item
+    await this.playCurrentQueueItem();
+  }
+
+  /**
+   * Remove an item from the queue by index
+   */
+  removeQueueItem(index: number): void {
+    if (index < 0 || index >= this.playbackQueue.length) {
+      if (this.settings.showNotices) new Notice('Invalid queue item index.');
+      return;
+    }
+
+    const removedItem = this.playbackQueue.splice(index, 1)[0];
+
+    // Adjust current index if necessary
+    if (this.isPlayingFromQueue) {
+      if (index < this.currentQueueIndex) {
+        this.currentQueueIndex--;
+      } else if (index === this.currentQueueIndex) {
+        // If we removed the currently playing item
+        if (this.currentQueueIndex >= this.playbackQueue.length) {
+          // We were at the end, stop playing from queue
+          this.isPlayingFromQueue = false;
+          this.currentQueueIndex = -1;
+          this.stopPlayback();
+        }
+        // If there are still items after, the next item is now at the same index
+      }
+    }
+
+    if (this.settings.showNotices) {
+      new Notice(`Removed "${removedItem.title || 'Untitled'}" from queue.`);
+    }
+    this.notifyQueueChange();
+    this.notifyQueueUIUpdate(); // Update queue UI when removing items
+  }
+
+  /**
+   * Move an item in the queue from one position to another
+   */
+  moveQueueItem(fromIndex: number, toIndex: number): void {
+    if (fromIndex < 0 || fromIndex >= this.playbackQueue.length ||
+      toIndex < 0 || toIndex >= this.playbackQueue.length ||
+      fromIndex === toIndex) {
+      return;
+    }
+
+    const item = this.playbackQueue.splice(fromIndex, 1)[0];
+    this.playbackQueue.splice(toIndex, 0, item);
+
+    // Adjust current index if necessary
+    if (this.isPlayingFromQueue) {
+      if (fromIndex === this.currentQueueIndex) {
+        // The currently playing item was moved
+        this.currentQueueIndex = toIndex;
+      } else if (fromIndex < this.currentQueueIndex && toIndex >= this.currentQueueIndex) {
+        // Item moved from before current to after current
+        this.currentQueueIndex--;
+      } else if (fromIndex > this.currentQueueIndex && toIndex <= this.currentQueueIndex) {
+        // Item moved from after current to before current
+        this.currentQueueIndex++;
+      }
+    }
+
+    if (this.settings.showNotices) {
+      new Notice(`Moved "${item.title || 'Untitled'}" in queue.`);
+    }
+    this.notifyQueueChange();
+    this.notifyQueueUIUpdate(); // Update queue UI when moving items
+  }
+
+  /**
+   * Set sleep timer to automatically stop playback after specified minutes
+   */
+  setSleepTimer(minutes: number): void {
+    this.cancelSleepTimer(); // Cancel any existing timer
+
+    this.sleepTimerMinutes = minutes;
+    this.sleepTimerTimeout = window.setTimeout(() => {
+      if (this.settings.showNotices) new Notice('Sleep timer expired. Stopping playback.');
+      this.stopPlayback();
+      this.sleepTimerTimeout = null;
+      this.sleepTimerMinutes = 0;
+    }, minutes * 60 * 1000);
+
+    if (this.settings.showNotices) {
+      new Notice(`Sleep timer set for ${minutes} minute${minutes !== 1 ? 's' : ''}`);
+    }
+  }
+
+  /**
+   * Cancel the sleep timer
+   */
+  cancelSleepTimer(): void {
+    if (this.sleepTimerTimeout) {
+      clearTimeout(this.sleepTimerTimeout);
+      this.sleepTimerTimeout = null;
+      if (this.sleepTimerMinutes > 0 && this.settings.showNotices) {
+        new Notice('Sleep timer cancelled');
+      }
+      this.sleepTimerMinutes = 0;
+    }
+  }
+
+  /**
+   * Get sleep timer status
+   */
+  getSleepTimerStatus(): { isActive: boolean, remainingMinutes: number } {
+    return {
+      isActive: this.sleepTimerTimeout !== null,
+      remainingMinutes: this.sleepTimerMinutes
+    };
+  }
+
+  /**
+   * Set loop enabled
+   */
+  setLoopEnabled(enabled: boolean): void {
+    this.loopEnabled = enabled;
+  }
+
+  /**
+   * Get loop enabled
+   */
+  getLoopEnabled(): boolean {
+    return this.loopEnabled;
   }
 } 

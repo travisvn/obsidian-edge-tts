@@ -362,3 +362,337 @@
 	color: var(--text-normal);
 }
 */
+
+/* Queue Manager UI */
+.queue-manager-ui {
+	position: fixed;
+	z-index: var(
+		--layer-modal
+	); /* Ensure it's above most things, but configurable */
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	box-shadow: var(--shadow-elevation-mid); /* Use Obsidian shadow variable */
+	width: 320px;
+	max-height: 400px; /* Consider making this a variable or setting */
+	display: flex;
+	flex-direction: column;
+	/* cursor is handled by JS for grab/grabbing */
+}
+
+.queue-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 5px 4px 5px 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background-color: var(--background-secondary);
+	border-top-left-radius: 8px; /* Match parent */
+	border-top-right-radius: 8px; /* Match parent */
+	cursor: grab; /* Indicate draggable header */
+}
+
+.queue-header-title-section {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.queue-header-title-section .obsidian-icon {
+	/* If ObsidianIcon is used directly */
+	/* Style for icon in header title if needed */
+}
+
+.queue-header-title {
+	font-weight: bold;
+	font-size: var(--font-ui-small); /* Use Obsidian font size variable */
+}
+
+.queue-header-count {
+	font-size: var(--font-ui-small); /* Use Obsidian font size variable */
+	color: var(--text-muted);
+	background-color: var(--background-modifier-border);
+	padding: 2px 6px;
+	border-radius: 10px;
+}
+
+/* New two-row button layout */
+.queue-header-buttons {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-right: 8px;
+}
+
+.queue-header-buttons-row {
+	display: flex;
+	gap: 4px;
+	justify-content: flex-end;
+}
+
+/* Mini buttons styled like floating player buttons */
+.queue-mini-button {
+	width: 20px;
+	height: 20px;
+	border-radius: 4px;
+	background-color: transparent;
+	border: 1px solid var(--background-modifier-border);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	color: var(--text-muted);
+	transition: all 0.2s ease;
+	position: relative;
+}
+
+.queue-mini-button:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+	border-color: var(--background-modifier-border-hover);
+}
+
+/* Active state for toggle buttons */
+.queue-mini-button.active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.queue-mini-button.active:hover {
+	background-color: var(--interactive-accent-hover);
+	border-color: var(--interactive-accent-hover);
+}
+
+/* Specific button styling */
+.queue-mini-button.play-button {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.queue-mini-button.play-button:hover {
+	background-color: var(--interactive-accent-hover);
+	border-color: var(--interactive-accent-hover);
+}
+
+.queue-mini-button.close-button:hover {
+	background-color: var(--background-modifier-error);
+	color: var(--text-error);
+	border-color: var(--background-modifier-error);
+}
+
+.queue-mini-button.clear-button:hover {
+	background-color: var(--background-modifier-error-hover);
+	color: var(--text-error);
+	border-color: var(--background-modifier-error-hover);
+}
+
+.queue-content-area {
+	flex: 1;
+	overflow-y: auto;
+	overflow-x: hidden; /* Prevent horizontal scroll */
+	padding: 8px; /* Default padding */
+	scroll-behavior: smooth; /* Smooth scrolling for manual scrolling */
+}
+
+.queue-empty-message {
+	text-align: center;
+	color: var(--text-muted);
+	font-size: var(--font-ui-medium);
+	padding: 32px 16px; /* More padding when empty */
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%; /* Try to fill available space */
+}
+
+.queue-empty-message .obsidian-icon {
+	/* For the large icon */
+	opacity: 0.5;
+	margin-bottom: 12px;
+}
+
+.queue-empty-title {
+	font-weight: bold;
+	margin-bottom: 8px;
+}
+
+.queue-empty-instructions {
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+	margin-bottom: 12px;
+}
+
+.queue-empty-instruction-list {
+	font-size: calc(var(--font-ui-small) - 1px); /* Slightly smaller */
+	line-height: 1.6;
+	text-align: left;
+	background-color: var(--background-secondary);
+	padding: 8px 12px;
+	border-radius: var(--radius-m);
+	border: 1px solid var(--background-modifier-border);
+}
+
+.queue-empty-instruction-list div {
+	/* For each instruction line */
+	margin-bottom: 2px;
+}
+
+.queue-item {
+	display: flex;
+	align-items: center;
+	padding: 10px 12px;
+	margin: 3px 0;
+	border-radius: var(--radius-m);
+	background-color: transparent;
+	border: 1px solid var(--background-modifier-border-hover);
+	cursor: pointer;
+	transition: all 0.2s ease;
+	position: relative;
+}
+
+.queue-item:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.queue-item.is-playing {
+	background-color: var(
+		--background-accent-hover
+	); /* Use Obsidian's accent system */
+	border: 2px solid var(--interactive-accent);
+	/* box-shadow: 0 0 0 2px var(--interactive-accent); Optional: alternative to border emphasis */
+}
+
+.queue-item-number-status {
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	background-color: var(--background-secondary);
+	color: var(--text-normal);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: var(--font-ui-small);
+	font-weight: bold;
+	margin-right: 12px;
+	flex-shrink: 0;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.queue-item.is-playing .queue-item-number-status {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: 2px solid var(--text-on-accent); /* Contrast border for playing state */
+}
+
+.queue-item-title {
+	flex: 1;
+	font-size: var(--font-ui-small);
+	font-weight: normal;
+	color: var(--text-normal);
+	/* Text overflow will be handled by JS truncateTitle if needed, or CSS:
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	*/
+}
+
+.queue-item.is-playing .queue-item-title {
+	font-weight: bold;
+	color: var(--text-accent); /* Emphasize title of playing item */
+}
+
+/* This indicator was not styled before, adding a basic style */
+.queue-item-playing-indicator {
+	position: absolute;
+	left: 6px; /* Adjust as needed */
+	top: 50%;
+	transform: translateY(-50%);
+	width: 3px; /* Or 4px */
+	height: 20px; /* Adjust as needed */
+	background-color: var(--interactive-accent);
+	border-radius: var(--radius-s);
+}
+
+.queue-item-controls {
+	display: flex;
+	gap: 2px;
+	margin-left: 8px;
+	opacity: 0; /* Hidden by default */
+	transition: opacity 0.2s ease;
+}
+
+.queue-item:hover .queue-item-controls {
+	opacity: 0.7; /* Show on hover */
+}
+
+.queue-item.is-playing .queue-item-controls {
+	opacity: 0.7; /* Also show if playing */
+}
+
+.queue-item-controls .queue-item-control-button {
+	/* Common style for item control buttons */
+	background: none;
+	border: none;
+	cursor: pointer;
+	padding: 4px;
+	border-radius: var(--radius-s);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	/* opacity: 0.5; Let parent .queue-item-controls handle base opacity */
+	transition: opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+	color: var(--icon-color);
+}
+
+.queue-item-controls .queue-item-control-button:hover {
+	opacity: 1;
+	background-color: var(--background-modifier-hover);
+	color: var(--icon-color-hover);
+}
+
+.queue-item-controls .queue-item-remove-button {
+	color: var(--text-error); /* Specific color for remove button */
+}
+
+.queue-item-controls .queue-item-remove-button:hover {
+	color: var(--text-error-hover); /* Or a brighter error color on hover */
+	background-color: var(--background-modifier-error-hover);
+}
+
+/* Ensure player-control-button styles don't conflict if they are too general.
+   Prefixing with .floating-player-ui helps.
+*/
+
+/* Floating Player Queue Button */
+.floating-player-queue-button {
+	position: absolute;
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	z-index: 2;
+	transition: all 0.2s ease;
+}
+
+.floating-player-queue-button:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+/* Position variants for the queue button */
+.floating-player-queue-button.top-position {
+	top: 8px;
+	right: 32px;
+}
+
+.floating-player-queue-button.bottom-position {
+	bottom: 8px;
+	left: 8px;
+}
