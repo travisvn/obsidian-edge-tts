@@ -159,7 +159,7 @@ export default class EdgeTTSPlugin extends Plugin {
 		this.addCommand({
 			id: 'pause-resume-playback',
 			name: 'Pause/Resume playback',
-			hotkeys: [{ modifiers: ['Ctrl'], key: ' ' }], // Ctrl+Space like media players
+			// hotkeys: [{ modifiers: ['Ctrl'], key: ' ' }], // Ctrl+Space like media players
 			callback: () => {
 				if (this.audioManager.isPlaybackPaused()) {
 					this.audioManager.resumePlayback();
@@ -172,21 +172,21 @@ export default class EdgeTTSPlugin extends Plugin {
 		this.addCommand({
 			id: 'jump-forward-10s',
 			name: 'Jump forward 10 seconds',
-			hotkeys: [{ modifiers: ['Ctrl'], key: 'ArrowRight' }],
+			// hotkeys: [{ modifiers: ['Ctrl'], key: 'ArrowRight' }],
 			callback: () => this.audioManager.jumpForward()
 		});
 
 		this.addCommand({
 			id: 'jump-backward-10s',
 			name: 'Jump backward 10 seconds',
-			hotkeys: [{ modifiers: ['Ctrl'], key: 'ArrowLeft' }],
+			// hotkeys: [{ modifiers: ['Ctrl'], key: 'ArrowLeft' }],
 			callback: () => this.audioManager.jumpBackward()
 		});
 
 		this.addCommand({
 			id: 'read-selected-text',
 			name: 'Read selected text aloud',
-			hotkeys: [{ modifiers: ['Ctrl', 'Shift'], key: 'r' }],
+			// hotkeys: [{ modifiers: ['Ctrl', 'Shift'], key: 'r' }],
 			editorCallback: (editor, view) => {
 				const selectedText = editor.getSelection();
 				if (selectedText.trim()) {
@@ -309,7 +309,7 @@ export default class EdgeTTSPlugin extends Plugin {
 			this.addCommand({
 				id: 'show-queue-manager',
 				name: 'Show queue manager',
-				hotkeys: [{ modifiers: ['Ctrl', 'Shift'], key: 'q' }],
+				// hotkeys: [{ modifiers: ['Ctrl', 'Shift'], key: 'q' }],
 				callback: () => {
 					this.queueUIManager?.showQueue();
 				}
