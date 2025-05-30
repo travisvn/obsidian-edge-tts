@@ -696,3 +696,213 @@
 	bottom: 8px;
 	left: 8px;
 }
+
+/* Chunked Progress UI Styles */
+.chunked-progress-ui {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	width: 320px;
+	max-height: 400px;
+	overflow: hidden;
+	font-family: var(--font-family);
+	z-index: 1000;
+}
+
+.chunked-progress-header {
+	background: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding: 12px 16px;
+}
+
+.chunked-progress-title-section {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.chunked-progress-title {
+	font-weight: 600;
+	font-size: 14px;
+	color: var(--text-normal);
+	flex: 1;
+}
+
+.chunked-progress-close-button {
+	background: none;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-left: auto;
+}
+
+.chunked-progress-close-button:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.chunked-progress-content {
+	padding: 16px;
+	max-height: 320px;
+	overflow-y: auto;
+}
+
+.chunked-progress-note-title {
+	font-size: 12px;
+	color: var(--text-muted);
+	margin-bottom: 12px;
+	font-style: italic;
+}
+
+.chunked-progress-phase {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12px;
+}
+
+.chunked-progress-phase-text {
+	font-size: 13px;
+	color: var(--text-normal);
+	font-weight: 500;
+}
+
+.chunked-progress-percentage {
+	font-size: 12px;
+	color: var(--text-accent);
+	font-weight: 600;
+}
+
+.chunked-progress-error {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	background: var(--background-modifier-error);
+	color: var(--text-error);
+	padding: 8px;
+	border-radius: 4px;
+	font-size: 12px;
+	margin-bottom: 12px;
+}
+
+.chunked-progress-overall-bar {
+	width: 100%;
+	height: 8px;
+	background: var(--background-modifier-border);
+	border-radius: 4px;
+	overflow: hidden;
+	margin-bottom: 12px;
+}
+
+.chunked-progress-overall-fill {
+	height: 100%;
+	background: var(--interactive-accent);
+	transition: width 0.3s ease;
+	border-radius: 4px;
+}
+
+.chunked-progress-overall-fill.error {
+	background: var(--text-error);
+}
+
+.chunked-progress-stats {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	font-size: 12px;
+	color: var(--text-muted);
+	margin-bottom: 12px;
+}
+
+.chunked-progress-stats .error-text {
+	color: var(--text-error);
+}
+
+.chunked-progress-chunks {
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: 12px;
+}
+
+.chunked-progress-chunks-header {
+	font-size: 12px;
+	color: var(--text-muted);
+	margin-bottom: 8px;
+	font-weight: 500;
+}
+
+.chunked-progress-chunks-list {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+	gap: 6px;
+	max-height: 120px;
+	overflow-y: auto;
+}
+
+.chunked-progress-chunk {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 2px;
+	padding: 8px 4px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	font-size: 10px;
+	min-height: 50px;
+	cursor: default;
+	transition: all 0.2s ease;
+}
+
+.chunked-progress-chunk.pending {
+	background: var(--background-secondary);
+	color: var(--text-muted);
+}
+
+.chunked-progress-chunk.processing {
+	background: var(--background-modifier-hover);
+	color: var(--text-accent);
+	border-color: var(--interactive-accent);
+}
+
+.chunked-progress-chunk.completed {
+	background: var(--background-modifier-success);
+	color: var(--text-success);
+	border-color: var(--text-success);
+}
+
+.chunked-progress-chunk.failed {
+	background: var(--background-modifier-error);
+	color: var(--text-error);
+	border-color: var(--text-error);
+}
+
+.chunked-progress-chunk-number {
+	font-weight: 600;
+	font-size: 11px;
+}
+
+.chunked-progress-chunk-progress {
+	font-size: 9px;
+	color: var(--text-accent);
+	font-weight: 500;
+}
+
+/* Spinning animation for loading icons */
+.spinning {
+	animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}

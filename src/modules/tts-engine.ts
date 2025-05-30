@@ -1,7 +1,7 @@
 import { EdgeTTSClient, OUTPUT_FORMAT, ProsodyOptions } from 'edge-tts-client';
 import { Notice } from 'obsidian';
 import { EdgeTTSPluginSettings } from './settings';
-import { filterFrontmatter, filterMarkdown } from '../utils';
+import { filterFrontmatter, filterMarkdown, checkAndTruncateContent } from '../utils';
 
 /**
  * Status of a TTS generation task
@@ -47,8 +47,26 @@ export class TTSEngine {
    * Create a new TTS task and add it to the queue
    */
   createTask(text: string, outputFormat: OUTPUT_FORMAT): TTSTask {
-    // Clean the text for TTS processing
-    const cleanText = filterMarkdown(filterFrontmatter(text), this.settings.overrideAmpersandEscape);
+    // Check content limits and truncate if necessary
+    const truncationResult = checkAndTruncateContent(text);
+
+    if (truncationResult.wasTruncated) {
+      const limitType = truncationResult.truncationReason === 'words' ? 'word' : 'character';
+      const limitValue = truncationResult.truncationReason === 'words' ? '5,000 words' : '30,000 characters';
+
+      if (this.settings.showNotices) {
+        new Notice(
+          `Content exceeds MP3 generation limit (${limitValue}). ` +
+          `Generating MP3 for the first ${truncationResult.finalWordCount.toLocaleString()} words ` +
+          `(${truncationResult.finalCharCount.toLocaleString()} characters). ` +
+          `Original content had ${truncationResult.originalWordCount.toLocaleString()} words.`,
+          8000 // Show notice for 8 seconds
+        );
+      }
+    }
+
+    // Clean the (potentially truncated) text for TTS processing
+    const cleanText = filterMarkdown(filterFrontmatter(truncationResult.content), this.settings.overrideAmpersandEscape);
 
     if (!cleanText.trim()) {
       throw new Error('No readable text after filtering');
@@ -199,8 +217,26 @@ export class TTSEngine {
    */
   async generateAudioBuffer(text: string): Promise<AudioBuffer | null> {
     try {
+      // Check content limits and truncate if necessary
+      const truncationResult = checkAndTruncateContent(text);
+
+      if (truncationResult.wasTruncated) {
+        const limitType = truncationResult.truncationReason === 'words' ? 'word' : 'character';
+        const limitValue = truncationResult.truncationReason === 'words' ? '5,000 words' : '30,000 characters';
+
+        if (this.settings.showNotices) {
+          new Notice(
+            `Content exceeds playback limit (${limitValue}). ` +
+            `Playing first ${truncationResult.finalWordCount.toLocaleString()} words ` +
+            `(${truncationResult.finalCharCount.toLocaleString()} characters). ` +
+            `Original content had ${truncationResult.originalWordCount.toLocaleString()} words.`,
+            8000 // Show notice for 8 seconds
+          );
+        }
+      }
+
       // Create a task but don't store it in the regular task list
-      const cleanText = filterMarkdown(filterFrontmatter(text), this.settings.overrideAmpersandEscape);
+      const cleanText = filterMarkdown(filterFrontmatter(truncationResult.content), this.settings.overrideAmpersandEscape);
 
       if (!cleanText.trim()) {
         throw new Error('No readable text after filtering');

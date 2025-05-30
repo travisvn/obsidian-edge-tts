@@ -7,6 +7,9 @@ import { TTSEngine, TTSTaskStatus } from './modules/tts-engine';
 import { OUTPUT_FORMAT } from 'edge-tts-client';
 import { FloatingUIManager } from './modules/FloatingUIManager';
 import { QueueUIManager } from './modules/QueueUIManager';
+import { ChunkedProgressManager } from './modules/ChunkedProgressManager';
+import { ChunkedGenerator } from './modules/chunked-generator';
+import { checkAndTruncateContent } from './utils';
 
 export default class EdgeTTSPlugin extends Plugin {
 	settings: EdgeTTSPluginSettings;
@@ -16,6 +19,7 @@ export default class EdgeTTSPlugin extends Plugin {
 	ttsEngine: TTSEngine;
 	floatingUIManager: FloatingUIManager;
 	queueUIManager?: QueueUIManager;
+	chunkedProgressManager: ChunkedProgressManager;
 
 	// Task tracking for MP3 generation
 	private mp3GenerationTasks: Map<string, { taskId: string, editor?: Editor, filePath?: string }> = new Map();
@@ -114,6 +118,9 @@ export default class EdgeTTSPlugin extends Plugin {
 		if (this.settings.enableQueueFeature && this.queueUIManager && this.settings.queueManagerPosition) {
 			this.queueUIManager.setInitialSavedPosition(this.settings.queueManagerPosition);
 		}
+
+		// 12. Initialize ChunkedProgressManager
+		this.chunkedProgressManager = new ChunkedProgressManager();
 
 		// Add settings tab
 		this.addSettingTab(new EdgeTTSPluginSettingTab(this.app, this));
@@ -332,6 +339,38 @@ export default class EdgeTTSPlugin extends Plugin {
 				}
 			});
 		}
+
+		// Add command for force chunked generation (useful for testing or manual override)
+		this.addCommand({
+			id: 'force-chunked-mp3-generation',
+			name: 'Force chunked MP3 generation',
+			editorCallback: (editor, view) => {
+				const selectedText = editor.getSelection() || editor.getValue();
+				if (selectedText.trim()) {
+					// Check content limits and truncate if necessary
+					const truncationResult = checkAndTruncateContent(selectedText);
+
+					if (truncationResult.wasTruncated) {
+						const limitType = truncationResult.truncationReason === 'words' ? 'word' : 'character';
+						const limitValue = truncationResult.truncationReason === 'words' ? '5,000 words' : '30,000 characters';
+
+						if (this.settings.showNotices) {
+							new Notice(
+								`Content exceeds MP3 generation limit (${limitValue}). ` +
+								`Generating MP3 for the first ${truncationResult.finalWordCount.toLocaleString()} words ` +
+								`(${truncationResult.finalCharCount.toLocaleString()} characters). ` +
+								`Original content had ${truncationResult.originalWordCount.toLocaleString()} words.`,
+								8000 // Show notice for 8 seconds
+							);
+						}
+					}
+
+					this.generateChunkedMP3(truncationResult.content, editor, view.file?.path);
+				} else {
+					if (this.settings.showNotices) new Notice('No text available for chunked generation.');
+				}
+			}
+		});
 	}
 
 	/**
@@ -398,8 +437,26 @@ export default class EdgeTTSPlugin extends Plugin {
 			}
 		}
 
-		// Use audio manager for playback
-		await this.audioManager.startPlayback(selectedText);
+		// Check content limits and truncate if necessary
+		const truncationResult = checkAndTruncateContent(selectedText);
+
+		if (truncationResult.wasTruncated) {
+			const limitType = truncationResult.truncationReason === 'words' ? 'word' : 'character';
+			const limitValue = truncationResult.truncationReason === 'words' ? '5,000 words' : '30,000 characters';
+
+			if (this.settings.showNotices) {
+				new Notice(
+					`Content exceeds playback limit (${limitValue}). ` +
+					`Playing first ${truncationResult.finalWordCount.toLocaleString()} words ` +
+					`(${truncationResult.finalCharCount.toLocaleString()} characters). ` +
+					`Original content had ${truncationResult.originalWordCount.toLocaleString()} words.`,
+					8000 // Show notice for 8 seconds
+				);
+			}
+		}
+
+		// Use audio manager for playback with potentially truncated content
+		await this.audioManager.startPlayback(truncationResult.content);
 	}
 
 	async generateMP3(editor?: Editor, viewInput?: MarkdownView | MarkdownFileInfo, filePath?: string): Promise<void> {
@@ -428,11 +485,39 @@ export default class EdgeTTSPlugin extends Plugin {
 			return;
 		}
 
+		// Check content limits and truncate if necessary
+		const truncationResult = checkAndTruncateContent(selectedText);
+
+		if (truncationResult.wasTruncated) {
+			const limitType = truncationResult.truncationReason === 'words' ? 'word' : 'character';
+			const limitValue = truncationResult.truncationReason === 'words' ? '5,000 words' : '30,000 characters';
+
+			if (this.settings.showNotices) {
+				new Notice(
+					`Content exceeds MP3 generation limit (${limitValue}). ` +
+					`Generating MP3 for the first ${truncationResult.finalWordCount.toLocaleString()} words ` +
+					`(${truncationResult.finalCharCount.toLocaleString()} characters). ` +
+					`Original content had ${truncationResult.originalWordCount.toLocaleString()} words.`,
+					8000 // Show notice for 8 seconds
+				);
+			}
+		}
+
+		// Use the potentially truncated content
+		const contentToProcess = truncationResult.content;
+
+		// Check if the text needs chunking
+		if (ChunkedGenerator.needsChunking(contentToProcess, this.settings)) {
+			// Use chunked generation
+			await this.generateChunkedMP3(contentToProcess, editor, filePath);
+			return;
+		}
+
 		try {
 			if (this.settings.showNotices) new Notice('Starting MP3 generation in background...');
 
 			// Create a background task for MP3 generation
-			const task = this.ttsEngine.createTask(selectedText, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+			const task = this.ttsEngine.createTask(contentToProcess, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
 
 			// Generate a unique ID for this MP3 generation task
 			const generationId = `mp3-${Date.now()}`;
@@ -446,6 +531,73 @@ export default class EdgeTTSPlugin extends Plugin {
 		} catch (error) {
 			console.error('Error starting MP3 generation:', error);
 			if (this.settings.showNotices) new Notice('Failed to start MP3 generation.');
+		}
+	}
+
+	/**
+	 * Generate MP3 using chunked approach for long texts
+	 */
+	private async generateChunkedMP3(text: string, editor?: Editor, filePath?: string): Promise<void> {
+		try {
+			const noteTitle = filePath ?
+				this.app.vault.getAbstractFileByPath(filePath)?.name?.replace(/\.md$/, '') || 'Note' :
+				'Note';
+
+			// Show progress indicator
+			this.chunkedProgressManager.show({
+				noteTitle,
+				totalChunks: ChunkedGenerator.estimateChunkCount(text, this.settings)
+			});
+
+			// Generate chunked MP3
+			const buffer = await ChunkedGenerator.generateChunkedMP3({
+				text,
+				settings: this.settings,
+				progressManager: this.chunkedProgressManager,
+				noteTitle,
+				maxChunkLength: ChunkedGenerator.getRecommendedChunkSize(text, this.settings)
+			});
+
+			if (buffer) {
+				// Save the MP3 file
+				const savedPath = await this.fileManager.saveMP3File(buffer, filePath);
+				if (savedPath && this.settings.embedInNote) {
+					await this.fileManager.embedMP3InNote(savedPath, filePath, editor);
+				}
+
+				if (this.settings.showNotices) {
+					new Notice('Chunked MP3 generation completed successfully!');
+				}
+
+				// Hide progress after a delay to show completion state
+				setTimeout(() => {
+					this.chunkedProgressManager.hide();
+				}, 3000);
+			} else {
+				// Error case - progress manager already shows error state
+				if (this.settings.showNotices) {
+					new Notice('Failed to generate chunked MP3.');
+				}
+				// Hide progress after a longer delay for error state
+				setTimeout(() => {
+					this.chunkedProgressManager.hide();
+				}, 5000);
+			}
+		} catch (error) {
+			console.error('Error in chunked MP3 generation:', error);
+			this.chunkedProgressManager.updateState({
+				currentPhase: 'error',
+				errorMessage: error instanceof Error ? error.message : 'Unknown error occurred'
+			});
+
+			if (this.settings.showNotices) {
+				new Notice('Failed to generate chunked MP3.');
+			}
+
+			// Hide progress after a delay for error state
+			setTimeout(() => {
+				this.chunkedProgressManager.hide();
+			}, 5000);
 		}
 	}
 
@@ -499,6 +651,7 @@ export default class EdgeTTSPlugin extends Plugin {
 		if (this.queueUIManager) {
 			this.queueUIManager.destroy();
 		}
+		this.chunkedProgressManager.destroy();
 
 		// No async cleanup in onunload for the temp file.
 		// It will be cleaned up on next load by cleanupTempAudioFile() in fileManager.

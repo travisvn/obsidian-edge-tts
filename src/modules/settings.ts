@@ -30,6 +30,7 @@ export interface EdgeTTSPluginSettings {
   enableQueueFeature: boolean;
   queueManagerPosition: { x: number; y: number } | null;
   autoPauseOnWindowBlur: boolean;
+  chunkSize: number;
 }
 
 // Top voices to be displayed in the dropdown
@@ -69,6 +70,7 @@ export const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
   enableQueueFeature: true,
   queueManagerPosition: null,
   autoPauseOnWindowBlur: false,
+  chunkSize: 9000,
 }
 
 export const defaultSelectedTextMp3Name = 'note';
@@ -253,6 +255,21 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
 
     containerEl.createEl('h3', { text: 'Saving .mp3 of narration' });
 
+    // Add information about chunked generation
+    const chunkedInfo = containerEl.createEl('div', {
+      cls: 'edge-tts-info-div'
+    });
+
+    const chunkedInfoText = document.createElement('p');
+    chunkedInfoText.style.fontSize = '13px';
+    chunkedInfoText.style.color = 'var(--text-muted)';
+    chunkedInfoText.innerHTML = `
+      <strong>Note:</strong> For long notes (over ~1500 words or 9000 characters), MP3 generation will automatically use 
+      a chunked approach. This splits the text into smaller parts, generates audio for each part, then combines them. 
+      A progress indicator will show the status of each chunk during generation.
+    `;
+    chunkedInfo.appendChild(chunkedInfoText);
+
     new Setting(containerEl)
       .setName('Generate MP3 file')
       .setDesc('Enable option to select "Generate MP3" in the file and editor menus.')
@@ -366,6 +383,20 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
           this.plugin.settings.overrideAmpersandEscape = value;
           await this.plugin.saveSettings();
         });
+      });
+
+    new Setting(containerEl)
+      .setName('Chunk size for long notes')
+      .setDesc('Maximum characters per chunk when generating MP3 for long notes. Smaller chunks may be more reliable but take longer. Default: 9000')
+      .addSlider(slider => {
+        slider.setLimits(5000, 15000, 1000);
+        slider.setValue(this.plugin.settings.chunkSize);
+        slider.onChange(async (value) => {
+          this.plugin.settings.chunkSize = value;
+          await this.plugin.saveSettings();
+        });
+        slider.setDynamicTooltip();
+        slider.showTooltip();
       });
   }
 } 

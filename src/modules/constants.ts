@@ -12,3 +12,9 @@ export const DIMENSION_ESTIMATES = {
   RIGHT_MARGIN: 20,
   BOTTOM_MARGIN: 20,
 }
+
+// Absolute maximum limits for MP3 generation (non-configurable by user)
+export const MP3_GENERATION_LIMITS = {
+  MAX_WORDS: 5000,
+  MAX_CHARACTERS: 30000,
+} as const;
