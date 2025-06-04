@@ -1,4 +1,4 @@
-import { Editor, FileSystemAdapter, getLanguage, MarkdownView, Notice, TFile } from 'obsidian';
+import { Editor, FileSystemAdapter, getLanguage, MarkdownView, Notice, TFile, normalizePath } from 'obsidian';
 import { EdgeTTSPluginSettings, defaultSelectedTextMp3Name } from './settings';
 import * as path from 'path';
 import * as os from 'os';
@@ -100,27 +100,16 @@ export class FileOperationsManager {
    * Saves an MP3 file to disk
    */
   async saveMP3File(buffer: Buffer, filePath?: string): Promise<string | null> {
-    const adapter = this.app.vault.adapter;
-
-    if (!(adapter instanceof FileSystemAdapter)) {
-      console.error('File system adapter not available.');
-      if (this.settings.showNotices) new Notice('Unable to save MP3 file.');
-      return null;
-    }
-
-    const basePath = adapter.getBasePath();
-    const fallbackFolderName = this.settings.replaceSpacesInFilenames
-      ? 'Note_Narration_Audio'
-      : 'Note Narration Audio';
-    const folderPath = this.settings.outputFolder || fallbackFolderName;
-
-    const relativeFolderPath = folderPath; // Path relative to vault root
-    const absoluteFolderPath = path.join(basePath, relativeFolderPath); // Platform-agnostic path
-
     try {
-      // Ensure the relative output folder exists
-      if (!await adapter.exists(relativeFolderPath)) {
-        await adapter.mkdir(relativeFolderPath);
+      // Ensure the output folder exists in the vault
+      const fallbackFolderName = this.settings.replaceSpacesInFilenames
+        ? 'Note_Narration_Audio'
+        : 'Note Narration Audio';
+      const folderPath = normalizePath(this.settings.outputFolder || fallbackFolderName);
+
+      // Ensure the output folder exists
+      if (!await this.app.vault.adapter.exists(folderPath)) {
+        await this.app.vault.adapter.mkdir(folderPath);
       }
 
       const language = getLanguage();
@@ -138,15 +127,16 @@ export class FileOperationsManager {
 
       let sanitizedDate = formattedDate.replace(/,/g, '').trim();
 
-      // Check for Windows and adjust the date format to remove colons
-      if (os.platform() === 'win32') {
-        sanitizedDate = sanitizedDate.replace(/:/g, '-');
-      }
+      // Sanitize date for all platforms - remove forbidden characters: \ / : * ? " < > |
+      sanitizedDate = sanitizedDate.replace(/[\\/:*?"<>|]/g, '-');
 
       // Generate the file name
       let noteName = filePath
         ? path.basename(filePath, '.md') || defaultSelectedTextMp3Name
         : defaultSelectedTextMp3Name;
+
+      // Sanitize note name - remove forbidden characters
+      noteName = noteName.replace(/[\\/:*?"<>|]/g, '-');
 
       if (this.settings.replaceSpacesInFilenames) {
         noteName = noteName.replace(/\s+/g, '_');
@@ -156,16 +146,23 @@ export class FileOperationsManager {
       const fileName = this.settings.replaceSpacesInFilenames
         ? `${noteName}_-_${sanitizedDate}.mp3`
         : `${noteName} - ${sanitizedDate}.mp3`;
-      const relativeFilePath = path.join(relativeFolderPath, fileName);
-      const absoluteFilePath = path.join(absoluteFolderPath, fileName);
 
-      // Explicitly create an empty file before writing
-      await adapter.write(relativeFilePath, '');
+      // Use forward slashes for Obsidian vault paths
+      const relativeFilePath = normalizePath(`${folderPath}/${fileName}`);
 
-      // Write the MP3 file
-      await adapter.writeBinary(relativeFilePath, buffer);
+      // Use Obsidian's vault.createBinary() instead of adapter.writeBinary()
+      // This properly updates Obsidian's file cache and prevents ghost files
+      await this.app.vault.createBinary(relativeFilePath, buffer);
 
-      if (this.settings.showNotices) new Notice(`MP3 saved to: ${absoluteFilePath}`);
+      // Get the absolute path for the success message
+      const adapter = this.app.vault.adapter;
+      if (adapter instanceof FileSystemAdapter) {
+        const basePath = adapter.getBasePath();
+        const absoluteFilePath = path.join(basePath, folderPath, fileName);
+        if (this.settings.showNotices) new Notice(`MP3 saved to: ${absoluteFilePath}`);
+      } else {
+        if (this.settings.showNotices) new Notice(`MP3 saved to: ${relativeFilePath}`);
+      }
 
       return relativeFilePath;
     } catch (error) {
