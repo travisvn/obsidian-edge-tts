@@ -69,7 +69,19 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
   const dragStartOffset = useRef({ x: 0, y: 0 });
   const playerRef = useRef<HTMLDivElement>(null);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+  // Helper function to get coordinates from either mouse or touch event
+  const getEventCoordinates = useCallback((e: MouseEvent | TouchEvent) => {
+    if ('touches' in e) {
+      // Touch event
+      const touch = e.touches[0] || e.changedTouches[0];
+      return { clientX: touch.clientX, clientY: touch.clientY };
+    } else {
+      // Mouse event
+      return { clientX: e.clientX, clientY: e.clientY };
+    }
+  }, []);
+
+  const handlePointerDown = useCallback((e: React.MouseEvent<HTMLDivElement, MouseEvent> | React.TouchEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     // Prevent dragging if the click is on a button, the slider, or the close button itself
     if (target.closest('button') || target.closest('.seek-slider') || target.classList.contains('floating-player-close-button-icon')) {
@@ -79,24 +91,26 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
     setIsDragging(true);
     if (playerRef.current) {
       const rect = playerRef.current.getBoundingClientRect();
+      const coords = getEventCoordinates(e.nativeEvent);
       dragStartOffset.current = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
+        x: coords.clientX - rect.left,
+        y: coords.clientY - rect.top,
       };
     }
     e.preventDefault();
-  }, []);
+  }, [getEventCoordinates]);
 
-  const handleMouseMove = useCallback((e: MouseEvent) => {
+  const handlePointerMove = useCallback((e: MouseEvent | TouchEvent) => {
     if (isDragging) {
+      const coords = getEventCoordinates(e);
       setPosition({
-        x: e.clientX - dragStartOffset.current.x,
-        y: e.clientY - dragStartOffset.current.y,
+        x: coords.clientX - dragStartOffset.current.x,
+        y: coords.clientY - dragStartOffset.current.y,
       });
     }
-  }, [isDragging]);
+  }, [isDragging, getEventCoordinates]);
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback(() => {
     if (isDragging) {
       setIsDragging(false);
       if (onDragEnd) {
@@ -107,17 +121,25 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
 
   useEffect(() => {
     if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+      // Add both mouse and touch event listeners
+      document.addEventListener('mousemove', handlePointerMove);
+      document.addEventListener('mouseup', handlePointerUp);
+      document.addEventListener('touchmove', handlePointerMove, { passive: false });
+      document.addEventListener('touchend', handlePointerUp);
     } else {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      // Remove both mouse and touch event listeners
+      document.removeEventListener('mousemove', handlePointerMove);
+      document.removeEventListener('mouseup', handlePointerUp);
+      document.removeEventListener('touchmove', handlePointerMove);
+      document.removeEventListener('touchend', handlePointerUp);
     }
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mousemove', handlePointerMove);
+      document.removeEventListener('mouseup', handlePointerUp);
+      document.removeEventListener('touchmove', handlePointerMove);
+      document.removeEventListener('touchend', handlePointerUp);
     };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
+  }, [isDragging, handlePointerMove, handlePointerUp]);
 
   useEffect(() => {
     setPosition(initialPosition);
@@ -154,8 +176,10 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
         left: `${position.x}px`,
         top: `${position.y}px`,
         cursor: isDragging ? 'grabbing' : 'grab', // Indicate grabbable
+        touchAction: 'none', // Prevent default touch actions during drag
       }}
-      onMouseDown={handleMouseDown}
+      onMouseDown={handlePointerDown}
+      onTouchStart={handlePointerDown}
     >
       <div onClick={onClose} className="floating-player-close-button" aria-label="Close Player">
         <ObsidianIcon icon="x" size={16} className="floating-player-close-button-icon" />

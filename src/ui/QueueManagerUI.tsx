@@ -68,7 +68,19 @@ export const QueueManagerUI: React.FC<QueueManagerUIProps> = ({
   const queueRef = useRef<HTMLDivElement>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+  // Helper function to get coordinates from either mouse or touch event
+  const getEventCoordinates = (e: MouseEvent | TouchEvent) => {
+    if ('touches' in e) {
+      // Touch event
+      const touch = e.touches[0] || e.changedTouches[0];
+      return { clientX: touch.clientX, clientY: touch.clientY };
+    } else {
+      // Mouse event
+      return { clientX: e.clientX, clientY: e.clientY };
+    }
+  };
+
+  const handlePointerDown = (e: React.MouseEvent<HTMLDivElement, MouseEvent> | React.TouchEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     // Only allow dragging from the header area, but not from buttons or button containers
     if (!target.closest('.queue-header') || target.closest('.queue-header-buttons')) {
@@ -78,24 +90,26 @@ export const QueueManagerUI: React.FC<QueueManagerUIProps> = ({
     setIsDragging(true);
     if (queueRef.current) {
       const rect = queueRef.current.getBoundingClientRect();
+      const coords = getEventCoordinates(e.nativeEvent);
       setDragStartOffset({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
+        x: coords.clientX - rect.left,
+        y: coords.clientY - rect.top,
       });
     }
     e.preventDefault();
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
+  const handlePointerMove = (e: MouseEvent | TouchEvent) => {
     if (isDragging) {
+      const coords = getEventCoordinates(e);
       setPosition({
-        x: e.clientX - dragStartOffset.x,
-        y: e.clientY - dragStartOffset.y,
+        x: coords.clientX - dragStartOffset.x,
+        y: coords.clientY - dragStartOffset.y,
       });
     }
   };
 
-  const handleMouseUp = () => {
+  const handlePointerUp = () => {
     if (isDragging) {
       setIsDragging(false);
       if (onDragEnd) {
@@ -120,15 +134,23 @@ export const QueueManagerUI: React.FC<QueueManagerUIProps> = ({
 
   useEffect(() => {
     if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+      // Add both mouse and touch event listeners
+      document.addEventListener('mousemove', handlePointerMove);
+      document.addEventListener('mouseup', handlePointerUp);
+      document.addEventListener('touchmove', handlePointerMove, { passive: false });
+      document.addEventListener('touchend', handlePointerUp);
     } else {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      // Remove both mouse and touch event listeners
+      document.removeEventListener('mousemove', handlePointerMove);
+      document.removeEventListener('mouseup', handlePointerUp);
+      document.removeEventListener('touchmove', handlePointerMove);
+      document.removeEventListener('touchend', handlePointerUp);
     }
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mousemove', handlePointerMove);
+      document.removeEventListener('mouseup', handlePointerUp);
+      document.removeEventListener('touchmove', handlePointerMove);
+      document.removeEventListener('touchend', handlePointerUp);
     };
   }, [isDragging, dragStartOffset]);
 
@@ -160,8 +182,10 @@ export const QueueManagerUI: React.FC<QueueManagerUIProps> = ({
         left: `${position.x}px`,
         top: `${position.y}px`,
         cursor: isDragging ? 'grabbing' : undefined,
+        touchAction: 'none', // Prevent default touch actions during drag
       }}
-      onMouseDown={handleMouseDown}
+      onMouseDown={handlePointerDown}
+      onTouchStart={handlePointerDown}
     >
       {/* Header */}
       <div className="queue-header">

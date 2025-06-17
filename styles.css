@@ -149,6 +149,11 @@
 	display: flex;
 	flex-direction: column;
 	gap: 8px; /* Gap between main sections */
+	/* Enable touch actions for mobile drag support */
+	user-select: none;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
 }
 
 .floating-player-close-button {
@@ -378,6 +383,11 @@
 	display: flex;
 	flex-direction: column;
 	/* cursor is handled by JS for grab/grabbing */
+	/* Enable touch actions for mobile drag support */
+	user-select: none;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
 }
 
 .queue-header {
