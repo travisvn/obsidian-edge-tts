@@ -402,7 +402,8 @@ export class AudioPlaybackManager {
   private async startFallbackPlayback(cleanText: string, activePlaybackAttemptId: number): Promise<void> {
     // For mobile, we'll generate the complete audio first, then play it
     // This avoids MSE entirely and uses traditional audio playback
-    await this.processTTSStream(cleanText, activePlaybackAttemptId, OUTPUT_FORMAT.WEBM_24KHZ_16BIT_MONO_OPUS, false);
+    // Use MP3 format which is better supported on mobile devices
+    await this.processTTSStream(cleanText, activePlaybackAttemptId, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, false);
   }
 
   /**
@@ -522,8 +523,8 @@ export class AudioPlaybackManager {
   }
 
   /**
-   * Finish fallback playback
-   */
+ * Finish fallback playback
+ */
   private async finishFallbackPlayback(activePlaybackAttemptId: number): Promise<void> {
     if (this.completeMp3BufferArray.length === 0) {
       if (this.settings.showNotices) new Notice('TTS stream was empty.');
@@ -535,78 +536,189 @@ export class AudioPlaybackManager {
       return;
     }
 
-    // For fallback, create a blob URL and play it directly
-    let completeBufferArrayBuffer: ArrayBuffer;
+    try {
+      // Show progress feedback
+      if (this.settings.showNotices) new Notice('Processing audio for playback...');
 
-    if (Platform.isMobile || typeof Buffer === 'undefined') {
-      // Mobile environment - manual concatenation
-      const totalLength = this.completeMp3BufferArray.reduce((sum, arr) => sum + arr.length, 0);
-      const concatenated = new Uint8Array(totalLength);
-      let offset = 0;
-      for (const arr of this.completeMp3BufferArray) {
-        concatenated.set(arr, offset);
-        offset += arr.length;
-      }
-      completeBufferArrayBuffer = concatenated.buffer;
-    } else {
-      // Desktop environment - use Buffer.concat
-      const nodeBuffer = Buffer.concat(this.completeMp3BufferArray);
-      completeBufferArrayBuffer = nodeBuffer.buffer.slice(nodeBuffer.byteOffset, nodeBuffer.byteOffset + nodeBuffer.byteLength);
-    }
+      // Create buffer for file operations
+      let completeBuffer: Buffer | Uint8Array;
 
-    if (this.currentPlaybackId !== activePlaybackAttemptId) return;
-
-    // Create blob and play
-    const audioBlob = new Blob([completeBufferArrayBuffer], { type: 'audio/webm' });
-    const audioUrl = URL.createObjectURL(audioBlob);
-
-    this.audioElement.src = audioUrl;
-    this.audioElement.load();
-
-    // Set up one-time listener for when audio is ready
-    const onLoadedMetadata = () => {
-      if (this.currentPlaybackId !== activePlaybackAttemptId) {
-        URL.revokeObjectURL(audioUrl);
-        return;
+      if (Platform.isMobile || typeof Buffer === 'undefined') {
+        // Mobile environment - manual concatenation to Uint8Array
+        const totalLength = this.completeMp3BufferArray.reduce((sum, arr) => sum + arr.length, 0);
+        const concatenated = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const arr of this.completeMp3BufferArray) {
+          concatenated.set(arr, offset);
+          offset += arr.length;
+        }
+        completeBuffer = concatenated;
+      } else {
+        // Desktop environment - use Buffer.concat
+        completeBuffer = Buffer.concat(this.completeMp3BufferArray);
       }
 
-      if (!this.settings.disablePlaybackControlPopover) {
-        this.updateFloatingPlayerCallback({
-          currentTime: 0,
-          duration: this.audioElement.duration,
-          isPlaying: false,
-          isLoading: false
-        });
-      }
+      if (this.currentPlaybackId !== activePlaybackAttemptId) return;
 
-      // Start playback
-      const playPromise = this.audioElement.play();
-      if (playPromise !== undefined) {
-        playPromise.then(() => {
-          if (this.currentPlaybackId === activePlaybackAttemptId && !this.settings.disablePlaybackControlPopover) {
+      // Try to save as temp file first (works better for mobile)
+      const tempFilePath = await this.fileManager.saveTempAudioFile(completeBuffer);
+
+      if (tempFilePath) {
+        // Use temp file approach (more reliable on mobile)
+        this.audioElement.src = this.fileManager.getTempAudioFileResourcePath() || '';
+        this.audioElement.load();
+
+        const onLoadedMetadata = () => {
+          if (this.currentPlaybackId !== activePlaybackAttemptId) return;
+
+          if (!this.settings.disablePlaybackControlPopover) {
             this.updateFloatingPlayerCallback({
-              currentTime: this.audioElement.currentTime,
+              currentTime: 0,
               duration: this.audioElement.duration,
-              isPlaying: true,
+              isPlaying: false,
               isLoading: false
             });
           }
-        }).catch(error => {
-          console.error("Error starting fallback playback:", error);
-          if (this.settings.showNotices) new Notice('Error starting audio playback.');
-          this.stopPlaybackInternal();
-        });
+
+          // Start playback
+          const playPromise = this.audioElement.play();
+          if (playPromise !== undefined) {
+            playPromise.then(() => {
+              if (this.currentPlaybackId === activePlaybackAttemptId && !this.settings.disablePlaybackControlPopover) {
+                this.updateFloatingPlayerCallback({
+                  currentTime: this.audioElement.currentTime,
+                  duration: this.audioElement.duration,
+                  isPlaying: true,
+                  isLoading: false
+                });
+              }
+            }).catch(error => {
+              console.error("Error starting temp file playback:", error);
+              if (this.settings.showNotices) new Notice('Error starting audio playback.');
+              this.stopPlaybackInternal();
+            });
+          }
+
+          this.audioElement.removeEventListener('loadedmetadata', onLoadedMetadata);
+        };
+
+        const onError = () => {
+          if (this.settings.showNotices) new Notice('Failed to load temp audio file.');
+          this.fallbackToBlobPlayback(completeBuffer, activePlaybackAttemptId);
+          this.audioElement.removeEventListener('error', onError);
+          this.audioElement.removeEventListener('loadedmetadata', onLoadedMetadata);
+        };
+
+        this.audioElement.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+        this.audioElement.addEventListener('error', onError, { once: true });
+
+      } else {
+        // Fallback to blob approach if temp file fails
+        this.fallbackToBlobPlayback(completeBuffer, activePlaybackAttemptId);
       }
 
-      // Clean up blob URL when audio ends
-      this.audioElement.addEventListener('ended', () => {
+    } catch (error) {
+      console.error('Error in finishFallbackPlayback:', error);
+      if (this.settings.showNotices) new Notice('Failed to process audio for mobile playback.');
+      if (!this.settings.disablePlaybackControlPopover) {
+        this.updateFloatingPlayerCallback({ currentTime: 0, duration: 0, isPlaying: false, isLoading: false });
+        this.hideFloatingPlayerCallback();
+      }
+      this.updateStatusBarCallback(false);
+    }
+  }
+
+  /**
+   * Fallback to blob-based playback when temp file approach fails
+   */
+  private fallbackToBlobPlayback(buffer: Buffer | Uint8Array, activePlaybackAttemptId: number): void {
+    try {
+      // Convert to ArrayBuffer for blob
+      let arrayBuffer: ArrayBuffer;
+
+      // Simple conversion that works for both Buffer and Uint8Array
+      if (buffer instanceof Uint8Array) {
+        arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+      } else {
+        // Convert Buffer to Uint8Array first, then to ArrayBuffer
+        const uint8Array = new Uint8Array(buffer);
+        arrayBuffer = uint8Array.buffer.slice(uint8Array.byteOffset, uint8Array.byteOffset + uint8Array.byteLength);
+      }
+
+      // Create blob and play - use MP3 MIME type
+      const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      this.audioElement.src = audioUrl;
+      this.audioElement.load();
+
+      const onError = () => {
+        if (this.settings.showNotices) new Notice('Audio playback failed on mobile device.');
+        if (!this.settings.disablePlaybackControlPopover) {
+          this.updateFloatingPlayerCallback({ currentTime: 0, duration: 0, isPlaying: false, isLoading: false });
+          this.hideFloatingPlayerCallback();
+        }
+        this.updateStatusBarCallback(false);
         URL.revokeObjectURL(audioUrl);
-      }, { once: true });
+        this.audioElement.removeEventListener('error', onError);
+        this.audioElement.removeEventListener('loadedmetadata', onLoadedMetadata);
+      };
 
-      this.audioElement.removeEventListener('loadedmetadata', onLoadedMetadata);
-    };
+      const onLoadedMetadata = () => {
+        if (this.currentPlaybackId !== activePlaybackAttemptId) {
+          URL.revokeObjectURL(audioUrl);
+          return;
+        }
 
-    this.audioElement.addEventListener('loadedmetadata', onLoadedMetadata);
+        if (!this.settings.disablePlaybackControlPopover) {
+          this.updateFloatingPlayerCallback({
+            currentTime: 0,
+            duration: this.audioElement.duration,
+            isPlaying: false,
+            isLoading: false
+          });
+        }
+
+        // Start playback
+        const playPromise = this.audioElement.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            if (this.currentPlaybackId === activePlaybackAttemptId && !this.settings.disablePlaybackControlPopover) {
+              this.updateFloatingPlayerCallback({
+                currentTime: this.audioElement.currentTime,
+                duration: this.audioElement.duration,
+                isPlaying: true,
+                isLoading: false
+              });
+            }
+          }).catch(error => {
+            console.error("Error starting blob playback:", error);
+            if (this.settings.showNotices) new Notice('Final audio playback attempt failed.');
+            this.stopPlaybackInternal();
+          });
+        }
+
+        // Clean up blob URL when audio ends
+        this.audioElement.addEventListener('ended', () => {
+          URL.revokeObjectURL(audioUrl);
+        }, { once: true });
+
+        this.audioElement.removeEventListener('loadedmetadata', onLoadedMetadata);
+        this.audioElement.removeEventListener('error', onError);
+      };
+
+      this.audioElement.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+      this.audioElement.addEventListener('error', onError, { once: true });
+
+    } catch (error) {
+      console.error('Error in fallbackToBlobPlayback:', error);
+      if (this.settings.showNotices) new Notice('Critical audio playback error.');
+      if (!this.settings.disablePlaybackControlPopover) {
+        this.updateFloatingPlayerCallback({ currentTime: 0, duration: 0, isPlaying: false, isLoading: false });
+        this.hideFloatingPlayerCallback();
+      }
+      this.updateStatusBarCallback(false);
+    }
   }
 
   /**
