@@ -375,6 +375,31 @@ export default class EdgeTTSPlugin extends Plugin {
 				}
 			});
 		}
+
+		// Debug command for Media Session API (experimental features)
+		this.addCommand({
+			id: 'debug-media-session',
+			name: 'Debug Media Session API support',
+			callback: () => {
+				const hasMediaSession = 'mediaSession' in navigator;
+				const hasMetadata = hasMediaSession && 'MediaMetadata' in window;
+				const experimentalEnabled = this.settings.enableExperimentalFeatures;
+				const isAndroid = /Android/i.test(navigator.userAgent);
+				const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+				const info = [
+					`Media Session API: ${hasMediaSession ? '✅ Supported' : '❌ Not supported'}`,
+					`MediaMetadata: ${hasMetadata ? '✅ Supported' : '❌ Not supported'}`,
+					`Experimental features: ${experimentalEnabled ? '✅ Enabled' : '❌ Disabled'}`,
+					`Platform: ${Platform.isMobile ? 'Mobile' : 'Desktop'}`,
+					`OS: ${isAndroid ? 'Android' : isIOS ? 'iOS' : 'Other'}`,
+					`Expected to work: ${hasMediaSession && experimentalEnabled ? (isIOS ? '✅ Yes (iOS)' : isAndroid ? '⚠️ Maybe (Android)' : '⚠️ Unknown') : '❌ No'}`,
+				];
+
+				console.log('Media Session Debug Info:', info);
+				new Notice(`Media Session Debug:\n${info.join('\n')}`, 12000);
+			}
+		});
 	}
 
 	/**

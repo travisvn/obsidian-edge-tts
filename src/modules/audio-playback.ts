@@ -212,9 +212,23 @@ export class AudioPlaybackManager {
         });
       }
 
-      // Update Media Session state
+      // Update Media Session state and metadata when playback starts
       if (this.mediaSessionSupported && navigator.mediaSession) {
         navigator.mediaSession.playbackState = 'playing';
+
+        if (this.isAndroid()) {
+          // Android: Reinitialize handlers on first play (sometimes needed for webview)
+          this.setupMediaSessionHandlers();
+          // Longer delay for Android to ensure webview is ready
+          setTimeout(() => {
+            this.updateMediaSessionMetadata(this.getCurrentAudioTitle(), this.audioElement.duration);
+          }, 300);
+        } else {
+          // iOS/other platforms: Set metadata with small delay
+          setTimeout(() => {
+            this.updateMediaSessionMetadata(this.getCurrentAudioTitle(), this.audioElement.duration);
+          }, 100);
+        }
       }
     };
 
@@ -245,13 +259,26 @@ export class AudioPlaybackManager {
   private initializeMediaSession(): void {
     // Only enable if experimental features are enabled
     if (!this.settings.enableExperimentalFeatures) {
+      console.log('Media Session: Experimental features disabled');
       return;
     }
 
     // Check if Media Session API is supported
     if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
       this.mediaSessionSupported = true;
-      this.setupMediaSessionHandlers();
+      console.log('Media Session: API supported, setting up handlers');
+
+      // Android-specific: Add delay for webview initialization
+      if (this.isAndroid()) {
+        console.log('Media Session: Android detected, using delayed initialization');
+        setTimeout(() => {
+          this.setupMediaSessionHandlers();
+        }, 500); // Give Android webview time to fully initialize
+      } else {
+        this.setupMediaSessionHandlers();
+      }
+    } else {
+      console.log('Media Session: API not supported in this browser');
     }
   }
 
@@ -329,19 +356,40 @@ export class AudioPlaybackManager {
         metadata.title = (title || 'Queue Item') + queueInfo;
       }
 
+      console.log('Media Session: Setting metadata:', metadata);
       navigator.mediaSession.metadata = new MediaMetadata(metadata);
 
-      // Update position state for seeking support
-      if (duration && duration !== Infinity) {
-        navigator.mediaSession.setPositionState({
-          duration: duration,
-          playbackRate: this.audioElement.playbackRate,
-          position: this.audioElement.currentTime,
-        });
-      }
+      // Android-specific: Set playback state before position state
+      const playbackState = this.audioElement.paused ? 'paused' : 'playing';
+      console.log('Media Session: Setting playback state:', playbackState);
+      navigator.mediaSession.playbackState = playbackState;
 
-      // Set playback state
-      navigator.mediaSession.playbackState = this.audioElement.paused ? 'paused' : 'playing';
+      // Update position state for seeking support (with Android-specific handling)
+      if (duration && duration !== Infinity) {
+        console.log('Media Session: Setting position state:', { duration, position: this.audioElement.currentTime });
+
+        if (this.isAndroid()) {
+          // Android: Add small delay before setting position state
+          setTimeout(() => {
+            try {
+              navigator.mediaSession?.setPositionState({
+                duration: duration,
+                playbackRate: this.audioElement.playbackRate,
+                position: this.audioElement.currentTime,
+              });
+            } catch (posError) {
+              console.warn('Android position state failed:', posError);
+            }
+          }, 100);
+        } else {
+          // iOS/other platforms: Set immediately
+          navigator.mediaSession.setPositionState({
+            duration: duration,
+            playbackRate: this.audioElement.playbackRate,
+            position: this.audioElement.currentTime,
+          });
+        }
+      }
     } catch (error) {
       console.warn('Failed to update Media Session metadata:', error);
     }
@@ -389,6 +437,13 @@ export class AudioPlaybackManager {
       return this.playbackQueue[this.currentQueueIndex].title || 'Queue Item';
     }
     return 'Edge TTS Audio';
+  }
+
+  /**
+   * Detect if running on Android
+   */
+  private isAndroid(): boolean {
+    return /Android/i.test(navigator.userAgent);
   }
 
   /**
@@ -1044,6 +1099,9 @@ export class AudioPlaybackManager {
    */
   updateSettings(settings: EdgeTTSPluginSettings): void {
     this.settings = settings;
+
+    // Re-initialize Media Session if experimental features were toggled
+    this.initializeMediaSession();
   }
 
   /**
