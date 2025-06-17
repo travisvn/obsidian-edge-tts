@@ -263,6 +263,17 @@ export class AudioPlaybackManager {
   }
 
   /**
+   * Check if MediaSource Extensions are supported
+   */
+  private isMSESupported(): boolean {
+    return typeof window !== 'undefined' &&
+      'MediaSource' in window &&
+      typeof MediaSource !== 'undefined' &&
+      MediaSource.isTypeSupported &&
+      MediaSource.isTypeSupported('audio/mpeg');
+  }
+
+  /**
    * Start text-to-speech playback
    * @param selectedText Text to read aloud
    */
@@ -272,7 +283,10 @@ export class AudioPlaybackManager {
     this.currentPlaybackId++; // Create a new ID for this playback attempt
     const activePlaybackAttemptId = this.currentPlaybackId;
 
-    this.isStreamingWithMSE = true;
+    // Check if we should use MSE or fallback approach
+    const useMSE = this.isMSESupported();
+    this.isStreamingWithMSE = useMSE;
+
     this.isPaused = false; // Reset isPaused for the new playback session
     this.completeMp3BufferArray = [];
     this.mseAudioQueue = [];
@@ -282,7 +296,7 @@ export class AudioPlaybackManager {
     if (!this.settings.disablePlaybackControlPopover) {
       this.showFloatingPlayerCallback({
         currentTime: 0,
-        duration: Infinity, // Duration is unknown with MSE initially
+        duration: useMSE ? Infinity : 0, // Duration is unknown with MSE initially
         isPlaying: false,   // Will be true once playback starts
         isLoading: true,
       });
@@ -303,7 +317,19 @@ export class AudioPlaybackManager {
       return;
     }
 
-    // 4. Initialize MediaSource
+    if (useMSE) {
+      // 4a. Initialize MediaSource (desktop/browsers with MSE support)
+      await this.startMSEPlayback(cleanText, activePlaybackAttemptId);
+    } else {
+      // 4b. Use fallback approach (mobile/browsers without MSE support)
+      await this.startFallbackPlayback(cleanText, activePlaybackAttemptId);
+    }
+  }
+
+  /**
+   * Start MSE-based playback for supported browsers
+   */
+  private async startMSEPlayback(cleanText: string, activePlaybackAttemptId: number): Promise<void> {
     this.mediaSource = new MediaSource();
     this.audioElement.src = URL.createObjectURL(this.mediaSource);
     // audioElement.load() is implicitly called when src is set
@@ -313,9 +339,7 @@ export class AudioPlaybackManager {
       URL.revokeObjectURL(this.audioElement.src); // Revoke old blob URL if any, though new one was just set
 
       try {
-        // TODO: Check MediaSource.isTypeSupported('audio/mpeg') before creating
         this.sourceBuffer = this.mediaSource.addSourceBuffer('audio/mpeg'); // For MP3
-
         this.sourceBuffer.mode = 'sequence'; // Ensures correct playback of appended segments
 
         this.sourceBuffer.addEventListener('updateend', () => {
@@ -361,28 +385,39 @@ export class AudioPlaybackManager {
     });
 
     this.mediaSource.addEventListener('sourceended', () => {
-      // console.log("MediaSource ended event fired.");
       // This means endOfStream() was called and all bufferring is complete from MSE perspective
-      // The audio might still be playing the buffered content.
     });
     this.mediaSource.addEventListener('sourceclose', () => {
-      // console.log("MediaSource closed event fired.");
       // Occurs when the media element is no longer using the media source
       this.isStreamingWithMSE = false; // MSE session is truly over
     });
 
-    // 5. Fetch and process TTS stream
+    // Start TTS stream processing
+    await this.processTTSStream(cleanText, activePlaybackAttemptId, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, true);
+  }
+
+  /**
+   * Start fallback playback for mobile/browsers without MSE support
+   */
+  private async startFallbackPlayback(cleanText: string, activePlaybackAttemptId: number): Promise<void> {
+    // For mobile, we'll generate the complete audio first, then play it
+    // This avoids MSE entirely and uses traditional audio playback
+    await this.processTTSStream(cleanText, activePlaybackAttemptId, OUTPUT_FORMAT.WEBM_24KHZ_16BIT_MONO_OPUS, false);
+  }
+
+  /**
+   * Process TTS stream - common logic for both MSE and fallback approaches
+   */
+  private async processTTSStream(cleanText: string, activePlaybackAttemptId: number, outputFormat: string, useMSE: boolean): Promise<void> {
     try {
-      if (this.settings.showNotices && this.isStreamingWithMSE) {
-        // Notice is slightly different for streaming, implying it will start soon
-        new Notice('Starting audio stream...');
+      if (this.settings.showNotices) {
+        new Notice(useMSE ? 'Starting audio stream...' : 'Generating audio...');
       }
       this.updateStatusBarCallback(true);
 
       const tts = new EdgeTTSClient();
       const voiceToUse = this.settings.customVoice.trim() || this.settings.selectedVoice;
-      // Using a format suitable for MSE, like AUDIO_24KHZ_48KBITRATE_MONO_MP3
-      await tts.setMetadata(voiceToUse, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+      await tts.setMetadata(voiceToUse, outputFormat);
 
       const prosodyOptions = new ProsodyOptions();
       prosodyOptions.rate = this.settings.playbackSpeed;
@@ -391,125 +426,187 @@ export class AudioPlaybackManager {
 
       readable.on('data', (data: Uint8Array) => {
         if (this.currentPlaybackId !== activePlaybackAttemptId) {
-          // readable.destroy(); // TODO: Check edge-tts-universal for proper stream abortion method
           return;
         }
         this.completeMp3BufferArray.push(data);
-        this.mseAudioQueue.push(data);
-        this.appendNextChunkToSourceBuffer();
+        if (useMSE) {
+          this.mseAudioQueue.push(data);
+          this.appendNextChunkToSourceBuffer();
+        }
       });
 
       readable.on('end', async () => {
         if (this.currentPlaybackId !== activePlaybackAttemptId) return;
 
-        // Ensure all MSE chunks are processed before ending the stream
-        const waitForMseQueue = async () => {
-          while (this.mseAudioQueue.length > 0 || this.isAppendingBuffer) {
-            // console.log(`Waiting for MSE queue: ${this.mseAudioQueue.length}, appending: ${this.isAppendingBuffer}`);
-            await new Promise(resolve => setTimeout(resolve, 50)); // Wait a bit
-          }
-        };
-        await waitForMseQueue();
-
-        if (this.mediaSource && this.mediaSource.readyState === 'open' && this.sourceBuffer) {
-          try {
-            if (!this.sourceBuffer.updating) { // Only call if not already updating
-              this.mediaSource.endOfStream();
-            } else {
-              // If it's updating, wait for updateend to call endOfStream
-              const onUpdateEnd = () => {
-                if (this.mediaSource && this.mediaSource.readyState === 'open') {
-                  try { this.mediaSource.endOfStream(); } catch (e) { console.warn("Error in endOfStream (onUpdateEnd)", e); }
-                }
-                this.sourceBuffer?.removeEventListener('updateend', onUpdateEnd);
-              };
-              this.sourceBuffer.addEventListener('updateend', onUpdateEnd);
-            }
-          } catch (e) {
-            console.warn('Error calling endOfStream on TTS end:', e);
-          }
-        }
-
-        // Now, process the complete MP3 buffer
-        if (this.completeMp3BufferArray.length === 0) {
-          if (this.settings.showNotices) new Notice('TTS stream was empty.');
-          // No actual audio data, isLoading should be false, player should be hidden or in a final state
-
-          // <<ARTIFICIAL DELAY FOR TESTING LOADER>>
-          await new Promise(resolve => setTimeout(resolve, 3000)); // 3-second delay
-
-          if (!this.settings.disablePlaybackControlPopover) {
-            this.updateFloatingPlayerCallback({ currentTime: 0, duration: 0, isPlaying: false, isLoading: false });
-            this.hideFloatingPlayerCallback();
-          }
-          this.updateStatusBarCallback(false);
-          this.isStreamingWithMSE = false;
-          return;
-        }
-
-        const completeBuffer = Buffer.concat(this.completeMp3BufferArray);
-        const tempFilePath = await this.fileManager.saveTempAudioFile(completeBuffer);
-
-        if (this.currentPlaybackId !== activePlaybackAttemptId) {
-          this.isStreamingWithMSE = false;
-          return;
-        }
-
-        if (tempFilePath) {
-          console.log('Full MP3 saved to:', tempFilePath);
-          // --- DEFERRED: SEAMLESS SWITCH LOGIC ---
-          // For now, MSE stream will play out. The full file is available for future replays.
-          // If we were to implement seamless switch here:
-          // 1. this.streamedPlaybackTimeBeforeSwitch = this.audioElement.currentTime;
-          // 2. this.isSwitchingToFullFile = true;
-          // 3. this.audioElement.src = tempFilePath; // This will trigger onloadedmetadata
-          // 4. this.audioElement.load();
-          // The onloadedmetadata listener has logic to handle this.isSwitchingToFullFile
-
-          // For now, we just note that the full file is ready.
-          // The MSE stream continues until it naturally ends.
-          // If enableReplayOption is true, the player stays open at the end of MSE stream.
-          // A subsequent "replay" could then use this tempFilePath.
-
-          // <<ARTIFICIAL DELAY FOR TESTING LOADER>>
-          await new Promise(resolve => setTimeout(resolve, 3000)); // 3-second delay
-
+        if (useMSE) {
+          // MSE-specific end logic
+          await this.finishMSEPlayback(activePlaybackAttemptId);
         } else {
-          // On mobile, temp file saving is not supported, so don't show an error notice
-          if (this.settings.showNotices && !Platform.isMobile) {
-            new Notice('Failed to save temporary audio for playback.');
-          }
-          // Update UI to reflect that loading is done, but no full file is available for robust replay
+          // Fallback end logic
+          await this.finishFallbackPlayback(activePlaybackAttemptId);
+        }
+      });
 
-          // <<ARTIFICIAL DELAY FOR TESTING LOADER>>
-          await new Promise(resolve => setTimeout(resolve, 3000)); // 3-second delay
+    } catch (error) {
+      console.error('Error processing TTS stream:', error);
+      if (this.currentPlaybackId === activePlaybackAttemptId) {
+        if (this.settings.showNotices) new Notice('Failed to read note aloud.');
+        this.stopPlaybackInternal();
+      }
+    }
+  }
 
-          if (!this.settings.disablePlaybackControlPopover) {
+  /**
+   * Finish MSE playback
+   */
+  private async finishMSEPlayback(activePlaybackAttemptId: number): Promise<void> {
+    // Ensure all MSE chunks are processed before ending the stream
+    const waitForMseQueue = async () => {
+      while (this.mseAudioQueue.length > 0 || this.isAppendingBuffer) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    };
+    await waitForMseQueue();
+
+    if (this.mediaSource && this.mediaSource.readyState === 'open' && this.sourceBuffer) {
+      try {
+        if (!this.sourceBuffer.updating) {
+          this.mediaSource.endOfStream();
+        } else {
+          const onUpdateEnd = () => {
+            if (this.mediaSource && this.mediaSource.readyState === 'open') {
+              try { this.mediaSource.endOfStream(); } catch (e) { console.warn("Error in endOfStream (onUpdateEnd)", e); }
+            }
+            this.sourceBuffer?.removeEventListener('updateend', onUpdateEnd);
+          };
+          this.sourceBuffer.addEventListener('updateend', onUpdateEnd);
+        }
+      } catch (e) {
+        console.warn('Error calling endOfStream on TTS end:', e);
+      }
+    }
+
+    // Handle empty stream
+    if (this.completeMp3BufferArray.length === 0) {
+      if (this.settings.showNotices) new Notice('TTS stream was empty.');
+      if (!this.settings.disablePlaybackControlPopover) {
+        this.updateFloatingPlayerCallback({ currentTime: 0, duration: 0, isPlaying: false, isLoading: false });
+        this.hideFloatingPlayerCallback();
+      }
+      this.updateStatusBarCallback(false);
+      this.isStreamingWithMSE = false;
+      return;
+    }
+
+    // Save complete buffer for replay functionality
+    const completeBuffer = Buffer.concat(this.completeMp3BufferArray);
+    const tempFilePath = await this.fileManager.saveTempAudioFile(completeBuffer);
+
+    if (this.currentPlaybackId !== activePlaybackAttemptId) {
+      this.isStreamingWithMSE = false;
+      return;
+    }
+
+    if (!tempFilePath && this.settings.showNotices && !Platform.isMobile) {
+      new Notice('Failed to save temporary audio for playback.');
+    }
+
+    if (!this.settings.disablePlaybackControlPopover) {
+      this.updateFloatingPlayerCallback({
+        currentTime: this.audioElement.currentTime,
+        duration: this.audioElement.duration,
+        isPlaying: !this.audioElement.paused,
+        isLoading: false
+      });
+    }
+  }
+
+  /**
+   * Finish fallback playback
+   */
+  private async finishFallbackPlayback(activePlaybackAttemptId: number): Promise<void> {
+    if (this.completeMp3BufferArray.length === 0) {
+      if (this.settings.showNotices) new Notice('TTS stream was empty.');
+      if (!this.settings.disablePlaybackControlPopover) {
+        this.updateFloatingPlayerCallback({ currentTime: 0, duration: 0, isPlaying: false, isLoading: false });
+        this.hideFloatingPlayerCallback();
+      }
+      this.updateStatusBarCallback(false);
+      return;
+    }
+
+    // For fallback, create a blob URL and play it directly
+    let completeBufferArrayBuffer: ArrayBuffer;
+
+    if (Platform.isMobile || typeof Buffer === 'undefined') {
+      // Mobile environment - manual concatenation
+      const totalLength = this.completeMp3BufferArray.reduce((sum, arr) => sum + arr.length, 0);
+      const concatenated = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const arr of this.completeMp3BufferArray) {
+        concatenated.set(arr, offset);
+        offset += arr.length;
+      }
+      completeBufferArrayBuffer = concatenated.buffer;
+    } else {
+      // Desktop environment - use Buffer.concat
+      const nodeBuffer = Buffer.concat(this.completeMp3BufferArray);
+      completeBufferArrayBuffer = nodeBuffer.buffer.slice(nodeBuffer.byteOffset, nodeBuffer.byteOffset + nodeBuffer.byteLength);
+    }
+
+    if (this.currentPlaybackId !== activePlaybackAttemptId) return;
+
+    // Create blob and play
+    const audioBlob = new Blob([completeBufferArrayBuffer], { type: 'audio/webm' });
+    const audioUrl = URL.createObjectURL(audioBlob);
+
+    this.audioElement.src = audioUrl;
+    this.audioElement.load();
+
+    // Set up one-time listener for when audio is ready
+    const onLoadedMetadata = () => {
+      if (this.currentPlaybackId !== activePlaybackAttemptId) {
+        URL.revokeObjectURL(audioUrl);
+        return;
+      }
+
+      if (!this.settings.disablePlaybackControlPopover) {
+        this.updateFloatingPlayerCallback({
+          currentTime: 0,
+          duration: this.audioElement.duration,
+          isPlaying: false,
+          isLoading: false
+        });
+      }
+
+      // Start playback
+      const playPromise = this.audioElement.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          if (this.currentPlaybackId === activePlaybackAttemptId && !this.settings.disablePlaybackControlPopover) {
             this.updateFloatingPlayerCallback({
               currentTime: this.audioElement.currentTime,
-              duration: this.audioElement.duration, // Or Infinity if MSE hasn't updated it
-              isPlaying: !this.audioElement.paused,
+              duration: this.audioElement.duration,
+              isPlaying: true,
               isLoading: false
             });
           }
-        }
-        // isStreamingWithMSE remains true until sourceclose or explicit stop.
-      });
-
-      // readable.on('error', (err) => {
-      //   if (this.currentPlaybackId !== activePlaybackAttemptId) return;
-      //   console.error('TTS stream error:', err);
-      //   if (this.settings.showNotices) new Notice('Failed to stream TTS audio.');
-      //   this.stopPlaybackInternal(); // Full stop on stream error
-      // });
-
-    } catch (error) {
-      console.error('Error reading note aloud (outer try-catch):', error);
-      if (this.currentPlaybackId === activePlaybackAttemptId) {
-        if (this.settings.showNotices) new Notice('Failed to read note aloud.');
-        this.stopPlaybackInternal(); // Full stop
+        }).catch(error => {
+          console.error("Error starting fallback playback:", error);
+          if (this.settings.showNotices) new Notice('Error starting audio playback.');
+          this.stopPlaybackInternal();
+        });
       }
-    }
+
+      // Clean up blob URL when audio ends
+      this.audioElement.addEventListener('ended', () => {
+        URL.revokeObjectURL(audioUrl);
+      }, { once: true });
+
+      this.audioElement.removeEventListener('loadedmetadata', onLoadedMetadata);
+    };
+
+    this.audioElement.addEventListener('loadedmetadata', onLoadedMetadata);
   }
 
   /**
