@@ -31,6 +31,10 @@ export interface EdgeTTSPluginSettings {
   queueManagerPosition: { x: number; y: number } | null;
   autoPauseOnWindowBlur: boolean;
   chunkSize: number;
+
+  // Experimental and mobile-specific features
+  enableExperimentalFeatures: boolean;
+  reducedNoticesOnMobile: boolean;
 }
 
 // Top voices to be displayed in the dropdown
@@ -71,6 +75,10 @@ export const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
   queueManagerPosition: null,
   autoPauseOnWindowBlur: false,
   chunkSize: 9000,
+
+  // Experimental and mobile-specific features
+  enableExperimentalFeatures: false,
+  reducedNoticesOnMobile: true, // Default to true for better mobile UX
 }
 
 export const defaultSelectedTextMp3Name = 'note';
@@ -388,6 +396,36 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
         rel: 'noopener'
       }
     });
+
+    containerEl.createEl('h3', { text: 'Advanced settings' });
+
+    // Experimental features toggle
+    new Setting(containerEl)
+      .setName('Enable experimental features')
+      .setDesc('Enable access to experimental features that may not be fully stable. These features are gated behind this toggle for safety.')
+      .addToggle(toggle => {
+        toggle.setValue(this.plugin.settings.enableExperimentalFeatures);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.enableExperimentalFeatures = value;
+          await this.plugin.saveSettings();
+          new Notice(`Experimental features ${value ? 'enabled' : 'disabled'}.`);
+        });
+      });
+
+    // Mobile-specific settings
+    if (Platform.isMobile) {
+      new Setting(containerEl)
+        .setName('Reduced notices on mobile')
+        .setDesc('Show fewer notification popups on mobile devices to reduce screen clutter. Disable this for more verbose feedback.')
+        .addToggle(toggle => {
+          toggle.setValue(this.plugin.settings.reducedNoticesOnMobile);
+          toggle.onChange(async (value) => {
+            this.plugin.settings.reducedNoticesOnMobile = value;
+            await this.plugin.saveSettings();
+            new Notice(`Mobile notices ${value ? 'reduced' : 'verbose'}.`);
+          });
+        });
+    }
 
     containerEl.createEl('h3', { text: 'Extra settings' });
 

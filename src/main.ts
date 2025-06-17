@@ -9,7 +9,7 @@ import { FloatingUIManager } from './modules/FloatingUIManager';
 import { QueueUIManager } from './modules/QueueUIManager';
 import { ChunkedProgressManager } from './modules/ChunkedProgressManager';
 import { ChunkedGenerator } from './modules/chunked-generator';
-import { checkAndTruncateContent } from './utils';
+import { checkAndTruncateContent, shouldShowNotices } from './utils';
 
 export default class EdgeTTSPlugin extends Plugin {
 	settings: EdgeTTSPluginSettings;
@@ -201,7 +201,7 @@ export default class EdgeTTSPlugin extends Plugin {
 				if (selectedText.trim()) {
 					this.audioManager.startPlayback(selectedText);
 				} else {
-					if (this.settings.showNotices) new Notice('No text selected.');
+					if (shouldShowNotices(this.settings)) new Notice('No text selected.');
 				}
 			}
 		});
@@ -221,7 +221,7 @@ export default class EdgeTTSPlugin extends Plugin {
 			name: 'Reset floating player position',
 			callback: () => {
 				this.floatingUIManager.resetPlayerPosition();
-				if (this.settings.showNotices) new Notice('Floating player position reset.');
+				if (shouldShowNotices(this.settings)) new Notice('Floating player position reset.');
 			}
 		});
 
@@ -246,7 +246,7 @@ export default class EdgeTTSPlugin extends Plugin {
 						const noteTitle = view.file?.basename || 'Untitled';
 						this.audioManager.addToQueue(selectedText, `${noteTitle} (selection)`);
 					} else {
-						if (this.settings.showNotices) new Notice('No text selected.');
+						if (shouldShowNotices(this.settings)) new Notice('No text selected.');
 					}
 				}
 			});

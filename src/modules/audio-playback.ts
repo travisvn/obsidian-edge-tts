@@ -1,7 +1,7 @@
 import { EdgeTTSPluginSettings } from './settings';
 import { Notice, Platform } from 'obsidian';
 import { UniversalTTSClient as EdgeTTSClient, OUTPUT_FORMAT, createProsodyOptions } from './tts-client-wrapper';
-import { filterFrontmatter, filterMarkdown } from '../utils';
+import { filterFrontmatter, filterMarkdown, shouldShowNotices } from '../utils';
 
 // Create a ProsodyOptions class that matches the old API
 class ProsodyOptions {
@@ -58,6 +58,9 @@ export class AudioPlaybackManager {
   // Queue UI update callback (for playback state changes)
   private queueUIUpdateCallback?: () => void;
 
+  // Media Session API integration for Android system controls
+  private mediaSessionSupported = false;
+
   constructor(
     settings: EdgeTTSPluginSettings,
     updateStatusBarCallback: (withControls: boolean) => void,
@@ -78,6 +81,7 @@ export class AudioPlaybackManager {
     this.audioElement.preload = 'auto';
     this.setupAudioEventListeners();
     this.setupAutoPauseListeners();
+    this.initializeMediaSession();
   }
 
   private setupAudioEventListeners(): void {
@@ -110,6 +114,9 @@ export class AudioPlaybackManager {
         isPlaying: !this.audioElement.paused,
         isLoading: false,
       });
+
+      // Set up Media Session metadata when audio is loaded
+      this.updateMediaSessionMetadata(this.getCurrentAudioTitle(), this.audioElement.duration);
     };
 
     this.audioElement.ontimeupdate = () => {
@@ -121,6 +128,8 @@ export class AudioPlaybackManager {
           isLoading: false,
         });
       }
+      // Update Media Session position for system controls
+      this.updateMediaSessionPosition();
     };
 
     this.audioElement.onended = () => {
@@ -146,7 +155,7 @@ export class AudioPlaybackManager {
       }
 
       // Original onended logic (for when playing the full MP3 file)
-      if (this.settings.showNotices) new Notice('Finished reading aloud.');
+      if (shouldShowNotices(this.settings)) new Notice('Finished reading aloud.');
 
       // Check if we should play next item in queue
       if (this.isPlayingFromQueue) {
@@ -183,6 +192,11 @@ export class AudioPlaybackManager {
           isLoading: false, // isLoading is false if paused
         });
       }
+
+      // Update Media Session state
+      if (this.mediaSessionSupported && navigator.mediaSession) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
     };
 
     this.audioElement.onplay = () => {
@@ -196,6 +210,11 @@ export class AudioPlaybackManager {
           isPlaying: true,
           isLoading: false, // When actually playing, loading is done for that segment/file
         });
+      }
+
+      // Update Media Session state
+      if (this.mediaSessionSupported && navigator.mediaSession) {
+        navigator.mediaSession.playbackState = 'playing';
       }
     };
 
@@ -218,6 +237,158 @@ export class AudioPlaybackManager {
         this.resumePlayback();
       }
     });
+  }
+
+  /**
+   * Initialize Media Session API for system media controls (Android/Chrome)
+   */
+  private initializeMediaSession(): void {
+    // Only enable if experimental features are enabled
+    if (!this.settings.enableExperimentalFeatures) {
+      return;
+    }
+
+    // Check if Media Session API is supported
+    if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
+      this.mediaSessionSupported = true;
+      this.setupMediaSessionHandlers();
+    }
+  }
+
+  /**
+   * Set up Media Session API action handlers
+   */
+  private setupMediaSessionHandlers(): void {
+    if (!this.mediaSessionSupported || !navigator.mediaSession) return;
+
+    try {
+      // Set up action handlers for system media controls
+      navigator.mediaSession.setActionHandler('play', () => {
+        this.resumePlayback();
+      });
+
+      navigator.mediaSession.setActionHandler('pause', () => {
+        this.pausePlayback();
+      });
+
+      navigator.mediaSession.setActionHandler('stop', () => {
+        this.stopPlayback();
+      });
+
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const seekTime = details.seekOffset || 10;
+        this.jumpBackward(seekTime);
+      });
+
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const seekTime = details.seekOffset || 10;
+        this.jumpForward(seekTime);
+      });
+
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined) {
+          this.seekPlayback(details.seekTime);
+        }
+      });
+
+      // Queue navigation handlers (if queue is enabled)
+      if (this.settings.enableQueueFeature) {
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+          if (this.isPlayingFromQueue && this.currentQueueIndex > 0) {
+            this.playQueueItem(this.currentQueueIndex - 1);
+          }
+        });
+
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+          if (this.isPlayingFromQueue && this.currentQueueIndex < this.playbackQueue.length - 1) {
+            this.playQueueItem(this.currentQueueIndex + 1);
+          }
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to set up Media Session handlers:', error);
+    }
+  }
+
+  /**
+   * Update Media Session metadata
+   */
+  private updateMediaSessionMetadata(title?: string, duration?: number): void {
+    if (!this.mediaSessionSupported || !navigator.mediaSession) return;
+
+    try {
+      const metadata: any = {
+        title: title || 'Edge TTS Audio',
+        artist: 'Obsidian Edge TTS',
+        album: 'Text-to-Speech',
+      };
+
+      // Add queue information if playing from queue
+      if (this.isPlayingFromQueue && this.playbackQueue.length > 0) {
+        const queueInfo = ` (${this.currentQueueIndex + 1}/${this.playbackQueue.length})`;
+        metadata.title = (title || 'Queue Item') + queueInfo;
+      }
+
+      navigator.mediaSession.metadata = new MediaMetadata(metadata);
+
+      // Update position state for seeking support
+      if (duration && duration !== Infinity) {
+        navigator.mediaSession.setPositionState({
+          duration: duration,
+          playbackRate: this.audioElement.playbackRate,
+          position: this.audioElement.currentTime,
+        });
+      }
+
+      // Set playback state
+      navigator.mediaSession.playbackState = this.audioElement.paused ? 'paused' : 'playing';
+    } catch (error) {
+      console.warn('Failed to update Media Session metadata:', error);
+    }
+  }
+
+  /**
+   * Update Media Session position state
+   */
+  private updateMediaSessionPosition(): void {
+    if (!this.mediaSessionSupported || !navigator.mediaSession) return;
+
+    try {
+      const duration = this.audioElement.duration;
+      if (duration && duration !== Infinity && !isNaN(duration)) {
+        navigator.mediaSession.setPositionState({
+          duration: duration,
+          playbackRate: this.audioElement.playbackRate,
+          position: this.audioElement.currentTime,
+        });
+      }
+    } catch (error) {
+      // Silently fail - position updates happen frequently
+    }
+  }
+
+  /**
+   * Clear Media Session when playback stops
+   */
+  private clearMediaSession(): void {
+    if (!this.mediaSessionSupported || !navigator.mediaSession) return;
+
+    try {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = 'none';
+    } catch (error) {
+      console.warn('Failed to clear Media Session:', error);
+    }
+  }
+
+  /**
+   * Get the current audio title for Media Session
+   */
+  private getCurrentAudioTitle(): string {
+    if (this.isPlayingFromQueue && this.currentQueueIndex >= 0 && this.playbackQueue[this.currentQueueIndex]) {
+      return this.playbackQueue[this.currentQueueIndex].title || 'Queue Item';
+    }
+    return 'Edge TTS Audio';
   }
 
   /**
@@ -304,7 +475,7 @@ export class AudioPlaybackManager {
 
     // 3. Validate and clean text
     if (!selectedText.trim()) {
-      if (this.settings.showNotices) new Notice('No text selected or available.');
+      if (shouldShowNotices(this.settings)) new Notice('No text selected or available.');
       if (!this.settings.disablePlaybackControlPopover) this.hideFloatingPlayerCallback();
       this.isStreamingWithMSE = false; // Reset flag
       return;
@@ -797,6 +968,9 @@ export class AudioPlaybackManager {
       this.updateStatusBarCallback(false);
     }
     this.completeMp3BufferArray = []; // Clear the MP3 buffer
+
+    // Clear Media Session
+    this.clearMediaSession();
   }
 
   /**

@@ -2,6 +2,8 @@
 /* eslint-disable no-useless-escape */
 
 import { MP3_GENERATION_LIMITS } from './modules/constants';
+import { Platform } from 'obsidian';
+import type { EdgeTTSPluginSettings } from './modules/settings';
 
 /**
  * Filters out the frontmatter from a Markdown text.
@@ -190,4 +192,24 @@ function findBestTruncationPoint(text: string): string {
 
   // Fallback: return the text as-is (already truncated to approximately the right length)
   return text;
+}
+
+/**
+ * Check if notices should be shown based on settings and platform
+ * @param settings - Plugin settings
+ * @returns true if notices should be shown, false otherwise
+ */
+export function shouldShowNotices(settings: EdgeTTSPluginSettings): boolean {
+  // If general notices are disabled, don't show any
+  if (!settings.showNotices) {
+    return false;
+  }
+
+  // On mobile, check the reduced notices setting
+  if (Platform.isMobile && settings.reducedNoticesOnMobile) {
+    return false;
+  }
+
+  // Otherwise, show notices
+  return true;
 }
