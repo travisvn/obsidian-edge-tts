@@ -115,7 +115,7 @@ export class ChunkedGenerator {
    */
   static needsChunking(text: string, settings?: EdgeTTSPluginSettings): boolean {
     // Clean the text first to get accurate length
-    const cleanText = filterMarkdown(filterFrontmatter(text), false);
+    const cleanText = filterMarkdown(filterFrontmatter(text));
 
     const maxLength = settings?.chunkSize || ChunkedGenerator.DEFAULT_MAX_CHUNK_LENGTH;
 
@@ -171,7 +171,7 @@ export class ChunkedGenerator {
         errorMessage: undefined // Clear any truncation message
       });
 
-      const cleanText = filterMarkdown(filterFrontmatter(truncationResult.content), settings.overrideAmpersandEscape);
+      const cleanText = filterMarkdown(filterFrontmatter(truncationResult.content));
 
       if (!cleanText.trim()) {
         throw new Error('No readable text after filtering');
@@ -334,7 +334,7 @@ export class ChunkedGenerator {
    * Estimate the number of chunks that would be created
    */
   static estimateChunkCount(text: string, settings?: EdgeTTSPluginSettings): number {
-    const cleanText = filterMarkdown(filterFrontmatter(text), false);
+    const cleanText = filterMarkdown(filterFrontmatter(text));
     const maxLength = settings?.chunkSize || ChunkedGenerator.DEFAULT_MAX_CHUNK_LENGTH;
     return Math.ceil(cleanText.length / maxLength);
   }
@@ -344,7 +344,7 @@ export class ChunkedGenerator {
    */
   static getRecommendedChunkSize(text: string, settings?: EdgeTTSPluginSettings): number {
     const userChunkSize = settings?.chunkSize || ChunkedGenerator.DEFAULT_MAX_CHUNK_LENGTH;
-    const cleanText = filterMarkdown(filterFrontmatter(text), false);
+    const cleanText = filterMarkdown(filterFrontmatter(text));
 
     // For very long texts, use smaller chunks to prevent memory issues
     if (cleanText.length > 50000) {

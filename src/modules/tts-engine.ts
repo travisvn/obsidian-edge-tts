@@ -80,7 +80,7 @@ export class TTSEngine {
     }
 
     // Clean the (potentially truncated) text for TTS processing
-    const cleanText = filterMarkdown(filterFrontmatter(truncationResult.content), this.settings.overrideAmpersandEscape);
+    const cleanText = filterMarkdown(filterFrontmatter(truncationResult.content));
 
     if (!cleanText.trim()) {
       throw new Error('No readable text after filtering');
@@ -266,7 +266,7 @@ export class TTSEngine {
       }
 
       // Create a task but don't store it in the regular task list
-      const cleanText = filterMarkdown(filterFrontmatter(truncationResult.content), this.settings.overrideAmpersandEscape);
+      const cleanText = filterMarkdown(filterFrontmatter(truncationResult.content));
 
       if (!cleanText.trim()) {
         throw new Error('No readable text after filtering');

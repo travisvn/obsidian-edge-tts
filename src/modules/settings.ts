@@ -23,7 +23,7 @@ export interface EdgeTTSPluginSettings {
   embedInNote: boolean;
   replaceSpacesInFilenames: boolean;
 
-  overrideAmpersandEscape: boolean;
+  // overrideAmpersandEscape: boolean; // No longer needed - edge-tts-universal handles XML escaping internally
   floatingPlayerPosition: { x: number; y: number } | null;
   disablePlaybackControlPopover: boolean;
   enableReplayOption: boolean;
@@ -63,7 +63,7 @@ export const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
   embedInNote: false,
   replaceSpacesInFilenames: false,
 
-  overrideAmpersandEscape: false,
+  // overrideAmpersandEscape: false, // No longer needed - edge-tts-universal handles XML escaping internally
   floatingPlayerPosition: null,
   disablePlaybackControlPopover: false,
   enableReplayOption: true,
@@ -391,16 +391,7 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
 
     containerEl.createEl('h3', { text: 'Extra settings' });
 
-    new Setting(containerEl)
-      .setName('Override ampersand (&) escaping')
-      .setDesc('If an ampersand (&) is by itself, we "escape it" for the API call. This override is an option for rare use cases.')
-      .addToggle(toggle => {
-        toggle.setValue(this.plugin.settings.overrideAmpersandEscape);
-        toggle.onChange(async (value) => {
-          this.plugin.settings.overrideAmpersandEscape = value;
-          await this.plugin.saveSettings();
-        });
-      });
+    // Legacy ampersand escaping setting removed - edge-tts-universal handles XML escaping internally
 
     new Setting(containerEl)
       .setName('Chunk size for long notes')

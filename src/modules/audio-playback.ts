@@ -309,7 +309,7 @@ export class AudioPlaybackManager {
       this.isStreamingWithMSE = false; // Reset flag
       return;
     }
-    const cleanText = filterMarkdown(filterFrontmatter(selectedText), this.settings.overrideAmpersandEscape);
+    const cleanText = filterMarkdown(filterFrontmatter(selectedText));
     if (!cleanText.trim()) {
       if (this.settings.showNotices) new Notice('No readable text after filtering.');
       if (!this.settings.disablePlaybackControlPopover) this.hideFloatingPlayerCallback();

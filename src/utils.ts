@@ -23,20 +23,20 @@ export function replaceComparisonSymbols(text: string): string {
     .replace(/<=/g, '≤'); // Replace "<=" with "≤"
 }
 
-export function escapeAmpersand(text: string): string {
-  return text.replace(/&/g, '&amp;')  // Escape '&'
-}
+// Legacy XML escaping functions - no longer needed since edge-tts-universal handles this internally
+// export function escapeAmpersand(text: string): string {
+//   return text.replace(/&/g, '&amp;')  // Escape '&'
+// }
 
-export function escapeXml(text: string): string {
-  return text
-    // .replace(/&/g, '&amp;')  // Escape '&' first to avoid double escaping
-    .replace(/</g, '&lt;')   // Escape '<'
-    .replace(/>/g, '&gt;')   // Escape '>'
-    .replace(/"/g, '&quot;') // Escape '"'
-    .replace(/'/g, '&apos;'); // Escape "'"
-}
+// export function escapeXml(text: string): string {
+//   return text
+//     .replace(/</g, '&lt;')   // Escape '<'
+//     .replace(/>/g, '&gt;')   // Escape '>'
+//     .replace(/"/g, '&quot;') // Escape '"'
+//     .replace(/'/g, '&apos;'); // Escape "'"
+// }
 
-export function filterMarkdown(text: string, overrideAmpersandEscape = false, overrideCodeBlockRemoval = false): string {
+export function filterMarkdown(text: string, overrideCodeBlockRemoval = false): string {
   // Remove frontmatter (e.g., YAML between triple dashes "---")
   const noFrontmatter = text.replace(/^-{3}[\s\S]*?-{3}\n?/, '');
 
@@ -71,10 +71,11 @@ export function filterMarkdown(text: string, overrideAmpersandEscape = false, ov
   // Remove HTML tags explicitly while preserving `<` and `>` symbols in text
   cleanedMarkdown = cleanedMarkdown.replace(/<([^>\s]+)[^>]*>/g, '');
 
-  // Trim leading and trailing whitespace and escape '&' if indicated
-  cleanedMarkdown = (overrideAmpersandEscape) ? cleanedMarkdown.trim() : escapeAmpersand(cleanedMarkdown.trim());
+  // Trim leading and trailing whitespace
+  // Note: edge-tts-universal handles XML/SSML escaping internally, so we no longer need manual escaping
+  cleanedMarkdown = cleanedMarkdown.trim();
 
-  const finalText = escapeXml(cleanedMarkdown);
+  const finalText = cleanedMarkdown;
 
   return finalText;
 }
