@@ -1,10 +1,10 @@
-import { Plugin, MarkdownView, Notice, Editor, MarkdownFileInfo } from 'obsidian';
+import { Plugin, MarkdownView, Notice, Editor, MarkdownFileInfo, Platform } from 'obsidian';
 import { EdgeTTSPluginSettings, EdgeTTSPluginSettingTab, DEFAULT_SETTINGS } from './modules/settings';
 import { AudioPlaybackManager } from './modules/audio-playback';
 import { FileOperationsManager } from './modules/file-operations';
 import { UIManager } from './modules/ui-components';
 import { TTSEngine, TTSTaskStatus } from './modules/tts-engine';
-import { OUTPUT_FORMAT } from 'edge-tts-client';
+import { OUTPUT_FORMAT } from './modules/tts-client-wrapper';
 import { FloatingUIManager } from './modules/FloatingUIManager';
 import { QueueUIManager } from './modules/QueueUIManager';
 import { ChunkedProgressManager } from './modules/ChunkedProgressManager';
@@ -144,14 +144,16 @@ export default class EdgeTTSPlugin extends Plugin {
 			}
 		});
 
-		// Add command to generate MP3
-		this.addCommand({
-			id: 'generate-mp3',
-			name: 'Generate MP3',
-			editorCallback: (editor, view) => {
-				this.generateMP3(editor, view);
-			}
-		});
+		// Add command to generate MP3 (desktop only)
+		if (!Platform.isMobile) {
+			this.addCommand({
+				id: 'generate-mp3',
+				name: 'Generate MP3',
+				editorCallback: (editor, view) => {
+					this.generateMP3(editor, view);
+				}
+			});
+		}
 
 		// Add command to stop playback
 		this.addCommand({
@@ -340,37 +342,39 @@ export default class EdgeTTSPlugin extends Plugin {
 			});
 		}
 
-		// Add command for force chunked generation (useful for testing or manual override)
-		this.addCommand({
-			id: 'force-chunked-mp3-generation',
-			name: 'Force chunked MP3 generation',
-			editorCallback: (editor, view) => {
-				const selectedText = editor.getSelection() || editor.getValue();
-				if (selectedText.trim()) {
-					// Check content limits and truncate if necessary
-					const truncationResult = checkAndTruncateContent(selectedText);
+		// Add command for force chunked generation (useful for testing or manual override, desktop only)
+		if (!Platform.isMobile) {
+			this.addCommand({
+				id: 'force-chunked-mp3-generation',
+				name: 'Force chunked MP3 generation',
+				editorCallback: (editor, view) => {
+					const selectedText = editor.getSelection() || editor.getValue();
+					if (selectedText.trim()) {
+						// Check content limits and truncate if necessary
+						const truncationResult = checkAndTruncateContent(selectedText);
 
-					if (truncationResult.wasTruncated) {
-						const limitType = truncationResult.truncationReason === 'words' ? 'word' : 'character';
-						const limitValue = truncationResult.truncationReason === 'words' ? '5,000 words' : '30,000 characters';
+						if (truncationResult.wasTruncated) {
+							const limitType = truncationResult.truncationReason === 'words' ? 'word' : 'character';
+							const limitValue = truncationResult.truncationReason === 'words' ? '5,000 words' : '30,000 characters';
 
-						if (this.settings.showNotices) {
-							new Notice(
-								`Content exceeds MP3 generation limit (${limitValue}). ` +
-								`Generating MP3 for the first ${truncationResult.finalWordCount.toLocaleString()} words ` +
-								`(${truncationResult.finalCharCount.toLocaleString()} characters). ` +
-								`Original content had ${truncationResult.originalWordCount.toLocaleString()} words.`,
-								8000 // Show notice for 8 seconds
-							);
+							if (this.settings.showNotices) {
+								new Notice(
+									`Content exceeds MP3 generation limit (${limitValue}). ` +
+									`Generating MP3 for the first ${truncationResult.finalWordCount.toLocaleString()} words ` +
+									`(${truncationResult.finalCharCount.toLocaleString()} characters). ` +
+									`Original content had ${truncationResult.originalWordCount.toLocaleString()} words.`,
+									8000 // Show notice for 8 seconds
+								);
+							}
 						}
-					}
 
-					this.generateChunkedMP3(truncationResult.content, editor, view.file?.path);
-				} else {
-					if (this.settings.showNotices) new Notice('No text available for chunked generation.');
+						this.generateChunkedMP3(truncationResult.content, editor, view.file?.path);
+					} else {
+						if (this.settings.showNotices) new Notice('No text available for chunked generation.');
+					}
 				}
-			}
-		});
+			});
+		}
 	}
 
 	/**
@@ -460,6 +464,14 @@ export default class EdgeTTSPlugin extends Plugin {
 	}
 
 	async generateMP3(editor?: Editor, viewInput?: MarkdownView | MarkdownFileInfo, filePath?: string): Promise<void> {
+		// Check if we're on mobile - MP3 generation is not supported
+		if (Platform.isMobile) {
+			if (this.settings.showNotices) {
+				new Notice('MP3 generation is not supported on mobile devices due to file system limitations. Use audio playback instead.');
+			}
+			return;
+		}
+
 		let selectedText = '';
 
 		if (filePath) {
@@ -538,6 +550,14 @@ export default class EdgeTTSPlugin extends Plugin {
 	 * Generate MP3 using chunked approach for long texts
 	 */
 	private async generateChunkedMP3(text: string, editor?: Editor, filePath?: string): Promise<void> {
+		// Check if we're on mobile - MP3 generation is not supported
+		if (Platform.isMobile) {
+			if (this.settings.showNotices) {
+				new Notice('MP3 generation is not supported on mobile devices due to file system limitations. Use audio playback instead.');
+			}
+			return;
+		}
+
 		try {
 			const noteTitle = filePath ?
 				this.app.vault.getAbstractFileByPath(filePath)?.name?.replace(/\.md$/, '') || 'Note' :

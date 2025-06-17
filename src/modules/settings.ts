@@ -1,4 +1,4 @@
-import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
+import { App, Notice, PluginSettingTab, Setting, Platform } from 'obsidian';
 import EdgeTTSPlugin from '../main';
 import { APP_STORE_LINKS } from './constants';
 
@@ -255,68 +255,85 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
 
     containerEl.createEl('h3', { text: 'Saving .mp3 of narration' });
 
-    // Add information about chunked generation
-    const chunkedInfo = containerEl.createEl('div', {
-      cls: 'edge-tts-info-div'
-    });
-
-    const chunkedInfoText = document.createElement('p');
-    chunkedInfoText.style.fontSize = '13px';
-    chunkedInfoText.style.color = 'var(--text-muted)';
-    chunkedInfoText.innerHTML = `
-      <strong>Note:</strong> For long notes (over ~1500 words or 9000 characters), MP3 generation will automatically use 
-      a chunked approach. This splits the text into smaller parts, generates audio for each part, then combines them. 
-      A progress indicator will show the status of each chunk during generation.
-    `;
-    chunkedInfo.appendChild(chunkedInfoText);
-
-    new Setting(containerEl)
-      .setName('Generate MP3 file')
-      .setDesc('Enable option to select "Generate MP3" in the file and editor menus.')
-      .addToggle(toggle => {
-        toggle.setValue(this.plugin.settings.generateMP3);
-        toggle.onChange(async (value) => {
-          this.plugin.settings.generateMP3 = value;
-          await this.plugin.saveSettings();
-          if (!value) {
-            new Notice('Menu items will be removed after the next reload.');
-          }
-        });
+    // Only show MP3 generation options on desktop
+    if (!Platform.isMobile) {
+      // Add information about chunked generation
+      const chunkedInfo = containerEl.createEl('div', {
+        cls: 'edge-tts-info-div'
       });
 
-    new Setting(containerEl)
-      .setName('Output folder')
-      .setDesc('Specify the folder to save generated MP3 files.')
-      .addText(text => {
-        text.setPlaceholder('e.g., Note Narration Audio')
-          .setValue(this.plugin.settings.outputFolder)
-          .onChange(async (value) => {
-            this.plugin.settings.outputFolder = value.trim();
+      const chunkedInfoText = document.createElement('p');
+      chunkedInfoText.style.fontSize = '13px';
+      chunkedInfoText.style.color = 'var(--text-muted)';
+      chunkedInfoText.innerHTML = `
+        <strong>Note:</strong> For long notes (over ~1500 words or 9000 characters), MP3 generation will automatically use 
+        a chunked approach. This splits the text into smaller parts, generates audio for each part, then combines them. 
+        A progress indicator will show the status of each chunk during generation.
+      `;
+      chunkedInfo.appendChild(chunkedInfoText);
+
+      new Setting(containerEl)
+        .setName('Generate MP3 file')
+        .setDesc('Enable option to select "Generate MP3" in the file and editor menus.')
+        .addToggle(toggle => {
+          toggle.setValue(this.plugin.settings.generateMP3);
+          toggle.onChange(async (value) => {
+            this.plugin.settings.generateMP3 = value;
+            await this.plugin.saveSettings();
+            if (!value) {
+              new Notice('Menu items will be removed after the next reload.');
+            }
+          });
+        });
+
+      new Setting(containerEl)
+        .setName('Output folder')
+        .setDesc('Specify the folder to save generated MP3 files.')
+        .addText(text => {
+          text.setPlaceholder('e.g., Note Narration Audio')
+            .setValue(this.plugin.settings.outputFolder)
+            .onChange(async (value) => {
+              this.plugin.settings.outputFolder = value.trim();
+              await this.plugin.saveSettings();
+            });
+        });
+
+      new Setting(containerEl)
+        .setName('Embed MP3 in note')
+        .setDesc('Embed a link to the generated MP3 file in the note.')
+        .addToggle(toggle => {
+          toggle.setValue(this.plugin.settings.embedInNote);
+          toggle.onChange(async (value) => {
+            this.plugin.settings.embedInNote = value;
             await this.plugin.saveSettings();
           });
+        });
+
+      new Setting(containerEl)
+        .setName('Replace spaces in filenames')
+        .setDesc('Replaces spaces in mp3 file name with underscores (used for system compatibility).')
+        .addToggle(toggle => {
+          toggle.setValue(this.plugin.settings.replaceSpacesInFilenames);
+          toggle.onChange(async (value) => {
+            this.plugin.settings.replaceSpacesInFilenames = value;
+            await this.plugin.saveSettings();
+          });
+        });
+    } else {
+      // Show mobile notice
+      const mobileNotice = containerEl.createEl('div', {
+        cls: 'edge-tts-info-div'
       });
 
-    new Setting(containerEl)
-      .setName('Embed MP3 in note')
-      .setDesc('Embed a link to the generated MP3 file in the note.')
-      .addToggle(toggle => {
-        toggle.setValue(this.plugin.settings.embedInNote);
-        toggle.onChange(async (value) => {
-          this.plugin.settings.embedInNote = value;
-          await this.plugin.saveSettings();
-        });
-      });
-
-    new Setting(containerEl)
-      .setName('Replace spaces in filenames')
-      .setDesc('Replaces spaces in mp3 file name with underscores (used for system compatibility).')
-      .addToggle(toggle => {
-        toggle.setValue(this.plugin.settings.replaceSpacesInFilenames);
-        toggle.onChange(async (value) => {
-          this.plugin.settings.replaceSpacesInFilenames = value;
-          await this.plugin.saveSettings();
-        });
-      });
+      const mobileNoticeText = document.createElement('p');
+      mobileNoticeText.style.fontSize = '13px';
+      mobileNoticeText.style.color = 'var(--text-muted)';
+      mobileNoticeText.innerHTML = `
+        <strong>Note:</strong> MP3 file generation is not available on mobile devices due to file system limitations. 
+        However, you can still use the audio playback feature to listen to your notes.
+      `;
+      mobileNotice.appendChild(mobileNoticeText);
+    }
 
     // --- Add Mobile App Section --- 
     const mobileAppSection = containerEl.createDiv({ cls: 'edge-tts-mobile-app-section' });

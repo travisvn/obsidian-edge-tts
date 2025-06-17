@@ -23,6 +23,7 @@ The **Obsidian Edge TTS Plugin** is a community plugin for [Obsidian](https://ob
 
 ## Features
 
+-   **🔥 NEW: Native Mobile Support** - Now works on both Obsidian Desktop and Obsidian Mobile (iOS/Android)
 -   Read selected text or entire notes aloud
 -   Choose from a list of top voices or specify a custom voice
 -   Adjust playback speed of voice over

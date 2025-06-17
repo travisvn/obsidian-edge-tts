@@ -1,7 +1,53 @@
-import { Editor, FileSystemAdapter, getLanguage, MarkdownView, Notice, TFile, normalizePath } from 'obsidian';
+import { Editor, FileSystemAdapter, getLanguage, MarkdownView, Notice, TFile, normalizePath, Platform } from 'obsidian';
 import { EdgeTTSPluginSettings, defaultSelectedTextMp3Name } from './settings';
-import * as path from 'path';
-import * as os from 'os';
+
+// Mobile-compatible path helpers (only import path/os on desktop)
+let path: any = null;
+let os: any = null;
+
+if (!Platform.isMobile) {
+  try {
+    path = require('path');
+    os = require('os');
+  } catch (e) {
+    console.warn('Node.js modules not available:', e);
+  }
+}
+
+// Helper function to get directory name (compatible with mobile)
+function getDirectoryName(filePath: string): string {
+  if (path && path.dirname) {
+    return path.dirname(filePath);
+  }
+  // Mobile fallback: simple string manipulation
+  const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+  return lastSlash === -1 ? '.' : filePath.substring(0, lastSlash);
+}
+
+// Helper function to get basename (compatible with mobile)
+function getBaseName(filePath: string, extension?: string): string {
+  if (path && path.basename) {
+    return path.basename(filePath, extension);
+  }
+  // Mobile fallback: simple string manipulation
+  const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+  let basename = lastSlash === -1 ? filePath : filePath.substring(lastSlash + 1);
+
+  if (extension && basename.endsWith(extension)) {
+    basename = basename.substring(0, basename.length - extension.length);
+  }
+
+  return basename;
+}
+
+// Helper function to join paths (compatible with mobile)
+function joinPaths(...paths: string[]): string {
+  if (path && path.join) {
+    return path.join(...paths);
+  }
+  // Mobile fallback: simple string joining with normalization
+  return normalizePath(paths.join('/'));
+}
 
 /**
  * Handles file operations for the Edge TTS plugin
@@ -99,8 +145,22 @@ export class FileOperationsManager {
   /**
    * Saves an MP3 file to disk
    */
-  async saveMP3File(buffer: Buffer, filePath?: string): Promise<string | null> {
+  async saveMP3File(buffer: Buffer | Uint8Array, filePath?: string): Promise<string | null> {
     try {
+      // Convert Uint8Array to Buffer if needed for Node.js compatibility
+      let finalBuffer: Buffer;
+      if (buffer instanceof Uint8Array && !(buffer instanceof Buffer)) {
+        // On desktop with Node.js, convert Uint8Array to Buffer
+        if (typeof Buffer !== 'undefined' && Buffer.from) {
+          finalBuffer = Buffer.from(buffer);
+        } else {
+          // Fallback for environments without Buffer
+          throw new Error('Buffer not available and cannot convert Uint8Array');
+        }
+      } else {
+        finalBuffer = buffer as Buffer;
+      }
+
       // Ensure the output folder exists in the vault
       const fallbackFolderName = this.settings.replaceSpacesInFilenames
         ? 'Note_Narration_Audio'
@@ -132,7 +192,7 @@ export class FileOperationsManager {
 
       // Generate the file name
       let noteName = filePath
-        ? path.basename(filePath, '.md') || defaultSelectedTextMp3Name
+        ? getBaseName(filePath, '.md') || defaultSelectedTextMp3Name
         : defaultSelectedTextMp3Name;
 
       // Sanitize note name - remove forbidden characters
@@ -152,13 +212,13 @@ export class FileOperationsManager {
 
       // Use Obsidian's vault.createBinary() instead of adapter.writeBinary()
       // This properly updates Obsidian's file cache and prevents ghost files
-      await this.app.vault.createBinary(relativeFilePath, buffer);
+      await this.app.vault.createBinary(relativeFilePath, finalBuffer);
 
       // Get the absolute path for the success message
       const adapter = this.app.vault.adapter;
       if (adapter instanceof FileSystemAdapter) {
         const basePath = adapter.getBasePath();
-        const absoluteFilePath = path.join(basePath, folderPath, fileName);
+        const absoluteFilePath = joinPaths(basePath, folderPath, fileName);
         if (this.settings.showNotices) new Notice(`MP3 saved to: ${absoluteFilePath}`);
       } else {
         if (this.settings.showNotices) new Notice(`MP3 saved to: ${relativeFilePath}`);
@@ -176,7 +236,13 @@ export class FileOperationsManager {
    * Saves a buffer to the temporary audio file path.
    * Returns the absolute path if successful, null otherwise.
    */
-  async saveTempAudioFile(buffer: Buffer): Promise<string | null> {
+  async saveTempAudioFile(buffer: Buffer | Uint8Array): Promise<string | null> {
+    // On mobile, temp file saving is not supported
+    if (Platform.isMobile) {
+      console.log('Temporary file saving is not supported on mobile platforms.');
+      return null;
+    }
+
     if (!this.tempAudioPath) {
       console.error('Temporary audio path is not set in FileOperationsManager.');
       if (this.settings.showNotices) new Notice('Failed to save temporary audio: path not set.');
@@ -190,14 +256,27 @@ export class FileOperationsManager {
       return null;
     }
 
+    // Convert buffer to proper format for desktop
+    let finalBuffer: Buffer;
+    if (buffer instanceof Uint8Array && !(buffer instanceof Buffer)) {
+      if (typeof Buffer !== 'undefined' && Buffer.from) {
+        finalBuffer = Buffer.from(buffer);
+      } else {
+        console.error('Buffer not available for temp file creation');
+        return null;
+      }
+    } else {
+      finalBuffer = buffer as Buffer;
+    }
+
     try {
       // Ensure the directory for the temp file exists (path includes filename)
-      const tempDir = path.dirname(this.tempAudioPath);
+      const tempDir = getDirectoryName(this.tempAudioPath);
       if (!await adapter.exists(tempDir)) {
         await adapter.mkdir(tempDir);
       }
 
-      await adapter.writeBinary(this.tempAudioPath, buffer);
+      await adapter.writeBinary(this.tempAudioPath, finalBuffer);
       // console.log('Temporary audio saved to:', this.tempAudioPath);
       return this.app.vault.adapter.getResourcePath(this.tempAudioPath);
     } catch (error) {
@@ -211,6 +290,11 @@ export class FileOperationsManager {
    * Gets the resource path for the temporary audio file.
    */
   getTempAudioFileResourcePath(): string | null {
+    // Temp files not supported on mobile
+    if (Platform.isMobile) {
+      return null;
+    }
+
     if (!this.tempAudioPath) return null;
     // Check if file exists before returning path, though getResourcePath might not require existence
     // For now, assume if tempAudioPath is set, we can try to get its resource path.
@@ -221,6 +305,11 @@ export class FileOperationsManager {
    * Cleans up the temporary audio file.
    */
   async cleanupTempAudioFile(): Promise<void> {
+    // Temp files not supported on mobile
+    if (Platform.isMobile) {
+      return;
+    }
+
     if (!this.tempAudioPath) return;
 
     const adapter = this.app.vault.adapter;

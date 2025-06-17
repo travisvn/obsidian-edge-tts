@@ -1,7 +1,16 @@
 import { EdgeTTSPluginSettings } from './settings';
-import { Notice } from 'obsidian';
-import { EdgeTTSClient, OUTPUT_FORMAT, ProsodyOptions } from 'edge-tts-client';
+import { Notice, Platform } from 'obsidian';
+import { UniversalTTSClient as EdgeTTSClient, OUTPUT_FORMAT, createProsodyOptions } from './tts-client-wrapper';
 import { filterFrontmatter, filterMarkdown } from '../utils';
+
+// Create a ProsodyOptions class that matches the old API
+class ProsodyOptions {
+  rate?: number;
+
+  constructor() {
+    // Initialize with defaults
+  }
+}
 import type { FileOperationsManager } from './file-operations';
 import type { App } from 'obsidian';
 
@@ -382,7 +391,7 @@ export class AudioPlaybackManager {
 
       readable.on('data', (data: Uint8Array) => {
         if (this.currentPlaybackId !== activePlaybackAttemptId) {
-          // readable.destroy(); // TODO: Check edge-tts-client for proper stream abortion method
+          // readable.destroy(); // TODO: Check edge-tts-universal for proper stream abortion method
           return;
         }
         this.completeMp3BufferArray.push(data);
@@ -466,7 +475,10 @@ export class AudioPlaybackManager {
           await new Promise(resolve => setTimeout(resolve, 3000)); // 3-second delay
 
         } else {
-          if (this.settings.showNotices) new Notice('Failed to save temporary audio for playback.');
+          // On mobile, temp file saving is not supported, so don't show an error notice
+          if (this.settings.showNotices && !Platform.isMobile) {
+            new Notice('Failed to save temporary audio for playback.');
+          }
           // Update UI to reflect that loading is done, but no full file is available for robust replay
 
           // <<ARTIFICIAL DELAY FOR TESTING LOADER>>

@@ -1,5 +1,5 @@
 import { EdgeTTSPluginSettings } from './settings';
-import { setIcon, setTooltip } from 'obsidian';
+import { setIcon, setTooltip, Platform } from 'obsidian';
 import { AudioPlaybackManager } from './audio-playback';
 import { TTSEngine, TTSTaskStatus } from './tts-engine';
 import EdgeTTSPlugin from 'src/main';
@@ -200,7 +200,8 @@ export class UIManager {
           });
         }
 
-        if (this.settings.generateMP3) {
+        // Only show MP3 generation on desktop
+        if (this.settings.generateMP3 && !Platform.isMobile) {
           menu.addItem((item: any) => {
             item
               .setTitle('Generate MP3')
@@ -245,7 +246,8 @@ export class UIManager {
           });
         }
 
-        if (this.settings.generateMP3) {
+        // Only show MP3 generation on desktop
+        if (this.settings.generateMP3 && !Platform.isMobile) {
           menu.addItem((item: any) => {
             item
               .setTitle('Generate MP3')

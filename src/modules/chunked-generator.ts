@@ -1,4 +1,13 @@
-import { EdgeTTSClient, OUTPUT_FORMAT, ProsodyOptions } from 'edge-tts-client';
+import { UniversalTTSClient as EdgeTTSClient, OUTPUT_FORMAT, createProsodyOptions } from './tts-client-wrapper';
+
+// Create a ProsodyOptions class that matches the old API
+class ProsodyOptions {
+  rate?: number;
+
+  constructor() {
+    // Initialize with defaults
+  }
+}
 import { EdgeTTSPluginSettings } from './settings';
 import { filterFrontmatter, filterMarkdown, checkAndTruncateContent } from '../utils';
 import { ChunkStatus } from '../ui/ChunkedProgressUI';

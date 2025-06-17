@@ -1,5 +1,14 @@
-import { EdgeTTSClient, OUTPUT_FORMAT, ProsodyOptions } from 'edge-tts-client';
-import { Notice } from 'obsidian';
+import { UniversalTTSClient as EdgeTTSClient, OUTPUT_FORMAT, createProsodyOptions } from './tts-client-wrapper';
+
+// Create a ProsodyOptions class that matches the old API
+class ProsodyOptions {
+  rate?: number;
+
+  constructor() {
+    // Initialize with defaults
+  }
+}
+import { Notice, Platform } from 'obsidian';
 import { EdgeTTSPluginSettings } from './settings';
 import { filterFrontmatter, filterMarkdown, checkAndTruncateContent } from '../utils';
 
@@ -21,11 +30,11 @@ export interface TTSTask {
   text: string;
   status: TTSTaskStatus;
   progress: number;  // 0-100
-  buffer?: Buffer;   // Result buffer when complete
+  buffer?: Buffer | Uint8Array;   // Result buffer when complete (handle both Node.js Buffer and mobile Uint8Array)
   error?: string;    // Error message if failed
   createdAt: Date;
   completedAt?: Date;
-  outputFormat: OUTPUT_FORMAT;
+  outputFormat: string;
   voice: string;
   playbackSpeed: number;
 }
@@ -46,7 +55,12 @@ export class TTSEngine {
   /**
    * Create a new TTS task and add it to the queue
    */
-  createTask(text: string, outputFormat: OUTPUT_FORMAT): TTSTask {
+  createTask(text: string, outputFormat: string): TTSTask {
+    // Check if we're on mobile - MP3 generation may not work properly
+    if (Platform.isMobile) {
+      throw new Error('MP3 generation is not supported on mobile devices due to file system limitations. Use audio playback instead.');
+    }
+
     // Check content limits and truncate if necessary
     const truncationResult = checkAndTruncateContent(text);
 
@@ -146,7 +160,23 @@ export class TTSEngine {
       // Use Promise to await stream completion
       await new Promise<void>((resolve, reject) => {
         readable.on('end', () => {
-          const completeBuffer = Buffer.concat(audioBuffer);
+          // Handle Buffer creation for different environments
+          let completeBuffer: Buffer | Uint8Array;
+
+          if (Platform.isMobile || typeof Buffer === 'undefined') {
+            // Mobile environment - use Uint8Array concatenation
+            const totalLength = audioBuffer.reduce((sum, arr) => sum + arr.length, 0);
+            completeBuffer = new Uint8Array(totalLength);
+            let offset = 0;
+            for (const arr of audioBuffer) {
+              (completeBuffer as Uint8Array).set(arr, offset);
+              offset += arr.length;
+            }
+          } else {
+            // Desktop environment - use Node.js Buffer
+            completeBuffer = Buffer.concat(audioBuffer);
+          }
+
           task.buffer = completeBuffer;
           task.status = TTSTaskStatus.COMPLETED;
           task.progress = 100;
@@ -260,12 +290,29 @@ export class TTSEngine {
         });
 
         readable.on('end', async () => {
-          const completeBuffer = new Uint8Array(Buffer.concat(audioBuffer));
+          // Handle buffer concatenation for different environments
+          let completeBufferArrayBuffer: ArrayBuffer;
+
+          if (Platform.isMobile || typeof Buffer === 'undefined') {
+            // Mobile environment - manual concatenation
+            const totalLength = audioBuffer.reduce((sum, arr) => sum + arr.length, 0);
+            const concatenated = new Uint8Array(totalLength);
+            let offset = 0;
+            for (const arr of audioBuffer) {
+              concatenated.set(arr, offset);
+              offset += arr.length;
+            }
+            completeBufferArrayBuffer = concatenated.buffer;
+          } else {
+            // Desktop environment - use Buffer.concat
+            const nodeBuffer = Buffer.concat(audioBuffer);
+            completeBufferArrayBuffer = nodeBuffer.buffer.slice(nodeBuffer.byteOffset, nodeBuffer.byteOffset + nodeBuffer.byteLength);
+          }
 
           try {
             // Create AudioContext for decoding
             const audioContext = new AudioContext();
-            const audioBufferDecoded = await audioContext.decodeAudioData(completeBuffer.buffer);
+            const audioBufferDecoded = await audioContext.decodeAudioData(completeBufferArrayBuffer);
             resolve(audioBufferDecoded);
           } catch (error) {
             reject(error);
