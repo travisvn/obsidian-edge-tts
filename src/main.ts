@@ -647,7 +647,30 @@ export default class EdgeTTSPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const loadedData = await this.loadData();
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+
+		// Ensure textFiltering settings exist for backward compatibility
+		if (!this.settings.textFiltering) {
+			this.settings.textFiltering = DEFAULT_SETTINGS.textFiltering;
+		} else {
+			// Merge any missing text filtering properties with defaults
+			this.settings.textFiltering = Object.assign({}, DEFAULT_SETTINGS.textFiltering, this.settings.textFiltering);
+		}
+
+		// Specifically ensure replaceComparisonSymbols is set for backward compatibility
+		if (typeof this.settings.textFiltering.replaceComparisonSymbols === 'undefined') {
+			this.settings.textFiltering.replaceComparisonSymbols = DEFAULT_SETTINGS.textFiltering.replaceComparisonSymbols;
+		}
+
+		// Ensure symbolReplacement settings exist for backward compatibility
+		if (!this.settings.symbolReplacement) {
+			this.settings.symbolReplacement = DEFAULT_SETTINGS.symbolReplacement;
+		} else {
+			// Merge any missing symbol replacement properties with defaults
+			this.settings.symbolReplacement = Object.assign({}, DEFAULT_SETTINGS.symbolReplacement, this.settings.symbolReplacement);
+		}
+
 		// Initial position setting is moved to onload after floatingUIManager is initialized.
 	}
 

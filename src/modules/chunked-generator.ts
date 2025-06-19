@@ -115,7 +115,13 @@ export class ChunkedGenerator {
    */
   static needsChunking(text: string, settings?: EdgeTTSPluginSettings): boolean {
     // Clean the text first to get accurate length
-    const cleanText = filterMarkdown(filterFrontmatter(text));
+    const cleanText = settings ?
+      filterMarkdown(
+        filterFrontmatter(text, settings.textFiltering.filterFrontmatter),
+        settings.textFiltering,
+        settings.symbolReplacement
+      ) :
+      filterMarkdown(filterFrontmatter(text));
 
     const maxLength = settings?.chunkSize || ChunkedGenerator.DEFAULT_MAX_CHUNK_LENGTH;
 
@@ -171,7 +177,11 @@ export class ChunkedGenerator {
         errorMessage: undefined // Clear any truncation message
       });
 
-      const cleanText = filterMarkdown(filterFrontmatter(truncationResult.content));
+      const cleanText = filterMarkdown(
+        filterFrontmatter(truncationResult.content, settings.textFiltering.filterFrontmatter),
+        settings.textFiltering,
+        settings.symbolReplacement
+      );
 
       if (!cleanText.trim()) {
         throw new Error('No readable text after filtering');
@@ -334,7 +344,12 @@ export class ChunkedGenerator {
    * Estimate the number of chunks that would be created
    */
   static estimateChunkCount(text: string, settings?: EdgeTTSPluginSettings): number {
-    const cleanText = filterMarkdown(filterFrontmatter(text));
+    const cleanText = settings ?
+      filterMarkdown(
+        filterFrontmatter(text, settings.textFiltering.filterFrontmatter),
+        settings.textFiltering
+      ) :
+      filterMarkdown(filterFrontmatter(text));
     const maxLength = settings?.chunkSize || ChunkedGenerator.DEFAULT_MAX_CHUNK_LENGTH;
     return Math.ceil(cleanText.length / maxLength);
   }
@@ -344,7 +359,12 @@ export class ChunkedGenerator {
    */
   static getRecommendedChunkSize(text: string, settings?: EdgeTTSPluginSettings): number {
     const userChunkSize = settings?.chunkSize || ChunkedGenerator.DEFAULT_MAX_CHUNK_LENGTH;
-    const cleanText = filterMarkdown(filterFrontmatter(text));
+    const cleanText = settings ?
+      filterMarkdown(
+        filterFrontmatter(text, settings.textFiltering.filterFrontmatter),
+        settings.textFiltering
+      ) :
+      filterMarkdown(filterFrontmatter(text));
 
     // For very long texts, use smaller chunks to prevent memory issues
     if (cleanText.length > 50000) {

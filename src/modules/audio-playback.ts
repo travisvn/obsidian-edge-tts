@@ -535,7 +535,7 @@ export class AudioPlaybackManager {
       this.isStreamingWithMSE = false; // Reset flag
       return;
     }
-    const cleanText = filterMarkdown(filterFrontmatter(selectedText));
+    const cleanText = this.settings ? filterMarkdown(filterFrontmatter(selectedText), this.settings.textFiltering, this.settings.symbolReplacement) : filterMarkdown(filterFrontmatter(selectedText));
     if (!cleanText.trim()) {
       if (this.settings.showNotices) new Notice('No readable text after filtering.');
       if (!this.settings.disablePlaybackControlPopover) this.hideFloatingPlayerCallback();
