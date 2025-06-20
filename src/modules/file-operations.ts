@@ -203,9 +203,12 @@ export class FileOperationsManager {
         sanitizedDate = sanitizedDate.replace(/\s+/g, '_');
       }
 
-      const fileName = this.settings.replaceSpacesInFilenames
+      const baseFileName = this.settings.replaceSpacesInFilenames
         ? `${noteName}_-_${sanitizedDate}.mp3`
         : `${noteName} - ${sanitizedDate}.mp3`;
+
+      // Generate a unique filename by checking for conflicts and appending (1), (2), etc.
+      const fileName = await this.generateUniqueFileName(folderPath, baseFileName);
 
       // Use forward slashes for Obsidian vault paths
       const relativeFilePath = normalizePath(`${folderPath}/${fileName}`);
@@ -323,6 +326,54 @@ export class FileOperationsManager {
     } catch (error) {
       console.error('Error cleaning up temporary audio file:', error);
     }
+  }
+
+  /**
+ * Generate a unique filename by checking for conflicts and appending (1), (2), etc.
+ * Similar to how most operating systems handle duplicate filenames.
+ */
+  private async generateUniqueFileName(folderPath: string, baseFileName: string): Promise<string> {
+    const normalizedFolderPath = normalizePath(folderPath);
+    let fileName = baseFileName;
+    let counter = 1;
+    const maxAttempts = 100; // Safety limit
+
+    // Keep checking if the file exists and increment counter until we find a unique name
+    while (counter <= maxAttempts) {
+      const fullPath = normalizePath(`${normalizedFolderPath}/${fileName}`);
+
+      try {
+        // Check if file exists in the vault
+        const fileExists = await this.app.vault.adapter.exists(fullPath);
+
+        if (!fileExists) {
+          // File doesn't exist, we can use this filename
+          return fileName;
+        }
+
+        // File exists, generate next variation
+        const lastDotIndex = baseFileName.lastIndexOf('.');
+        if (lastDotIndex === -1) {
+          // No extension, just append counter
+          fileName = `${baseFileName} (${counter})`;
+        } else {
+          // Has extension, insert counter before extension
+          const nameWithoutExt = baseFileName.substring(0, lastDotIndex);
+          const extension = baseFileName.substring(lastDotIndex);
+          fileName = `${nameWithoutExt} (${counter})${extension}`;
+        }
+
+        counter++;
+      } catch (error) {
+        console.error('Error checking file existence:', error);
+        // If we can't check, just return the current filename attempt
+        return fileName;
+      }
+    }
+
+    // If we've reached the maximum attempts, log a warning and return the last attempt
+    console.warn('generateUniqueFileName: reached maximum attempts limit');
+    return fileName;
   }
 
   /**
