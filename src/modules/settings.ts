@@ -110,7 +110,7 @@ export const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
     filterImages: true,
     filterFootnotes: true,
     filterComments: true,
-    filterMathExpressions: true,
+    filterMathExpressions: false,
     filterWikiLinks: false,
     filterHighlights: true, // (this just removes the == — the text should remain)
     filterCallouts: false, // Keep callouts by default
