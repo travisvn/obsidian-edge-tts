@@ -219,13 +219,13 @@ export function filterMarkdown(text: string, textFiltering?: EdgeTTSPluginSettin
   // Filter callouts if enabled
   if (textFiltering?.filterCallouts) {
     // Remove Obsidian callout syntax but keep the content
-    // Match lines starting with > [!type] and remove the callout formatting
-    processedText = processedText.replace(/^>\s*\[![^\]]*\]\s*/gm, '');
+    // Match lines starting with > [!type] or > >[!nested] and remove the callout formatting
+    processedText = processedText.replace(/^>[>\s]*\[![^\]]*\]\s*/gm, '');
     // Also remove subsequent > markers that are part of the callout
     const lines = processedText.split('\n');
     let inCallout = false;
     const filteredLines = lines.map(line => {
-      if (line.match(/^>\s*\[![^\]]*\]/)) {
+      if (line.match(/^>\s*\[![^\]]*\]/)) {  // ? this condition will never be true because all callout syntax has already been removed above
         inCallout = true;
         return line.replace(/^>\s*\[![^\]]*\]\s*/, '');
       } else if (inCallout && line.startsWith('> ')) {
@@ -292,15 +292,16 @@ export function filterMarkdown(text: string, textFiltering?: EdgeTTSPluginSettin
   // Remove strikethrough (~~text~~) but keep the content
   cleanedMarkdown = cleanedMarkdown.replace(/~~(.*?)~~/g, '$1');
 
-  // Remove other markdown characters (e.g., #, -, *, etc., not part of inline code)
   cleanedMarkdown = cleanedMarkdown
+    // Remove blockquote markers (e.g., "> ", "> >") only at the start of a line
+    // Blockquote markers are replaced first, because we can have headers or list inside blockquote / callout
+    .replace(/^>[>\s]*/gm, '')
+    // Remove other markdown characters (e.g., #, -, *, etc., not part of inline code)
     .replace(/^[#*-]+\s*/gm, '')
     // Remove unordered list markers (e.g., "- ", "* ", "+ ")
     .replace(/^[\-\+\*]\s+/gm, '')
     // Remove ordered list numbers (e.g., "1. ", "2. ")
     .replace(/^\d+\.\s+/gm, '')
-    // Remove blockquote markers (e.g., "> ") only at the start of a line
-    .replace(/^>\s+/gm, '')
     // Remove horizontal rules (e.g., "---", "***")
     .replace(/^[-*]{3,}\s*$/gm, '');
 
