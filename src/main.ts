@@ -207,6 +207,17 @@ export default class EdgeTTSPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'read-from-cursor',
+			name: 'Read from cursor aloud',
+			editorCallback: (editor, view) => {
+				const lastLine = editor.lastLine();
+				const lastCh = editor.getLine(lastLine).length;
+				const textFromCursor = editor.getRange(editor.getCursor(), { line: lastLine, ch: lastCh });
+				this.audioManager.startPlayback(textFromCursor);
+			}
+		});
+
+		this.addCommand({
 			id: 'show-floating-playback-controls',
 			name: 'Show floating playback controls',
 			callback: () => {
