@@ -23,8 +23,7 @@ These limits are not user-configurable and apply to all MP3 generation methods (
 
 Chunked generation is automatically triggered when:
 
--   A note contains more than **1,500 words** OR
--   A note contains more than **9,000 characters** (configurable via settings)
+-   A note's text exceeds **4,096 bytes** after text filtering and processing
 
 Note: Even with chunked generation, the absolute maximum limits above still apply.
 
@@ -55,13 +54,13 @@ When chunked generation is active, you'll see a progress indicator positioned ab
 
 ## Configuration
 
-### Chunk Size Setting
+### Chunk Size
 
-You can adjust the chunk size in the plugin settings under "Extra settings":
+Chunk size is now fixed at **4,096 bytes** per chunk due to API limitations:
 
--   **Range**: 5,000 - 15,000 characters per chunk
--   **Default**: 9,000 characters
--   **Recommendation**: Smaller chunks are more reliable but take longer to process
+-   **Fixed Size**: 4,096 bytes (with 100-byte safety buffer = 3,996 effective bytes)
+-   **Not Configurable**: This limit is enforced by the TTS API and cannot be changed by users
+-   **Byte-Based**: Chunking is now based on byte size rather than character count for accurate API compliance
 
 ### Commands
 
@@ -98,9 +97,9 @@ The chunked generation system is designed to be resilient:
 ### Common Issues
 
 1. **Content Truncated**: Your note exceeds 5,000 words or 30,000 characters - consider splitting into multiple notes
-2. **Timeout Errors**: Try reducing the chunk size in settings
+2. **Timeout Errors**: Chunks are now optimized at 4,096 bytes for better reliability
 3. **Network Issues**: Check your internet connection and retry
-4. **Memory Issues**: Close other applications and reduce chunk size
+4. **Memory Issues**: Close other applications (chunks are now optimized for memory usage)
 5. **Service Limits**: The Edge TTS service may have daily or hourly limits
 
 ### Getting Help
@@ -108,8 +107,8 @@ The chunked generation system is designed to be resilient:
 If you encounter persistent issues with chunked generation:
 
 1. Check the browser console for detailed error messages
-2. Try reducing the chunk size setting
-3. Test with the "Force chunked MP3 generation" command on smaller text
+2. Test with the "Force chunked MP3 generation" command on smaller text
+3. Verify your content doesn't exceed the 5,000 word / 30,000 character limits
 4. Consider splitting very long content into multiple notes
 5. Report issues on the plugin's GitHub repository
 
@@ -117,8 +116,10 @@ If you encounter persistent issues with chunked generation:
 
 -   **Content Limits**: 5,000 words or 30,000 characters maximum (enforced before processing)
 -   **Text Processing**: Content is filtered and cleaned before chunking
--   **Chunk Boundaries**: Attempts to split at paragraph and sentence boundaries
+-   **Chunk Size**: Fixed at 4,096 bytes per chunk (3,996 effective bytes with safety buffer)
+-   **Chunk Boundaries**: Attempts to split at paragraph and sentence boundaries while respecting byte limits
 -   **Audio Format**: Uses MP3 format for maximum compatibility
 -   **Combination Method**: Simple concatenation of MP3 buffers
 -   **Error Recovery**: Graceful handling of partial failures
 -   **Smart Truncation**: When content exceeds limits, truncation occurs at sentence or word boundaries
+-   **API Compliance**: Byte-based chunking ensures compliance with TTS API 4,096-byte limit

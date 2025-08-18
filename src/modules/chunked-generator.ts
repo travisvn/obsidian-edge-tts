@@ -28,26 +28,30 @@ export interface ChunkedGenerationOptions {
   settings: EdgeTTSPluginSettings;
   progressManager: ChunkedProgressManager;
   noteTitle?: string;
-  maxChunkLength?: number; // Maximum characters per chunk
 }
 
 export class ChunkedGenerator {
-  private static readonly DEFAULT_MAX_CHUNK_LENGTH = 9000; // 9000 characters as mentioned
-  private static readonly MAX_WORD_LENGTH = 1500; // 1500 words as mentioned (rough estimate: 6 chars per word average)
+  private static readonly MAX_CHUNK_BYTES = 4096; // 4096 bytes as enforced by TTS API
+  private static readonly SAFETY_BUFFER = 100; // Safety buffer for encoding differences
+  private static readonly EFFECTIVE_MAX_BYTES = ChunkedGenerator.MAX_CHUNK_BYTES - ChunkedGenerator.SAFETY_BUFFER;
 
   /**
-   * Split text into manageable chunks while trying to preserve sentence boundaries
+   * Split text into manageable chunks (max 4096 bytes) while trying to preserve sentence boundaries
    */
-  private static splitTextIntoChunks(text: string, maxLength: number = ChunkedGenerator.DEFAULT_MAX_CHUNK_LENGTH): string[] {
+  private static splitTextIntoChunks(text: string): string[] {
+    const maxBytes = ChunkedGenerator.EFFECTIVE_MAX_BYTES;
     const chunks: string[] = [];
     let currentChunk = '';
+
+    // Helper function to get byte size of a string
+    const getByteSize = (str: string): number => new Blob([str]).size;
 
     // Split by paragraphs first to try to maintain logical breaks
     const paragraphs = text.split(/\n\s*\n/);
 
     for (const paragraph of paragraphs) {
       // If a single paragraph is too long, we need to split it further
-      if (paragraph.length > maxLength) {
+      if (getByteSize(paragraph) > maxBytes) {
         // If we have content in currentChunk, save it first
         if (currentChunk.trim()) {
           chunks.push(currentChunk.trim());
@@ -58,19 +62,20 @@ export class ChunkedGenerator {
         const sentences = paragraph.split(/(?<=[.!?])\s+/);
 
         for (const sentence of sentences) {
-          if (sentence.length > maxLength) {
+          if (getByteSize(sentence) > maxBytes) {
             // If even a single sentence is too long, split by words
             const words = sentence.split(/\s+/);
             let wordChunk = '';
 
             for (const word of words) {
-              if ((wordChunk + ' ' + word).length > maxLength) {
+              const potentialChunk = wordChunk + (wordChunk ? ' ' : '') + word;
+              if (getByteSize(potentialChunk) > maxBytes) {
                 if (wordChunk.trim()) {
                   chunks.push(wordChunk.trim());
                 }
                 wordChunk = word;
               } else {
-                wordChunk += (wordChunk ? ' ' : '') + word;
+                wordChunk = potentialChunk;
               }
             }
 
@@ -78,13 +83,14 @@ export class ChunkedGenerator {
               currentChunk = wordChunk.trim();
             }
           } else {
-            if ((currentChunk + '\n\n' + sentence).length > maxLength) {
+            const potentialChunk = currentChunk + (currentChunk ? ' ' : '') + sentence;
+            if (getByteSize(potentialChunk) > maxBytes) {
               if (currentChunk.trim()) {
                 chunks.push(currentChunk.trim());
               }
               currentChunk = sentence;
             } else {
-              currentChunk += (currentChunk ? ' ' : '') + sentence;
+              currentChunk = potentialChunk;
             }
           }
         }
@@ -92,7 +98,7 @@ export class ChunkedGenerator {
         // Check if adding this paragraph would exceed the limit
         const potentialChunk = currentChunk + (currentChunk ? '\n\n' : '') + paragraph;
 
-        if (potentialChunk.length > maxLength && currentChunk.trim()) {
+        if (getByteSize(potentialChunk) > maxBytes && currentChunk.trim()) {
           // Save current chunk and start a new one
           chunks.push(currentChunk.trim());
           currentChunk = paragraph;
@@ -111,10 +117,10 @@ export class ChunkedGenerator {
   }
 
   /**
-   * Check if text needs to be chunked
+   * Check if text needs to be chunked (exceeds 4096 bytes)
    */
   static needsChunking(text: string, settings?: EdgeTTSPluginSettings): boolean {
-    // Clean the text first to get accurate length
+    // Clean the text first to get accurate byte size
     const cleanText = settings ?
       filterMarkdown(
         filterFrontmatter(text, settings.textFiltering.filterFrontmatter),
@@ -123,27 +129,22 @@ export class ChunkedGenerator {
       ) :
       filterMarkdown(filterFrontmatter(text));
 
-    const maxLength = settings?.chunkSize || ChunkedGenerator.DEFAULT_MAX_CHUNK_LENGTH;
-
-    // Check both character count and estimated word count
-    const charCount = cleanText.length;
-    const wordCount = cleanText.split(/\s+/).length;
-
-    return charCount > maxLength || wordCount > ChunkedGenerator.MAX_WORD_LENGTH;
+    // Check byte size instead of character count
+    const byteSize = new Blob([cleanText]).size;
+    return byteSize > ChunkedGenerator.EFFECTIVE_MAX_BYTES;
   }
 
   /**
-   * Generate MP3 in chunks
+   * Generate MP3 in chunks (4096 bytes each)
    */
   static async generateChunkedMP3(options: ChunkedGenerationOptions): Promise<Buffer | null> {
-    const { text, settings, progressManager, noteTitle = 'Note', maxChunkLength = ChunkedGenerator.DEFAULT_MAX_CHUNK_LENGTH } = options;
+    const { text, settings, progressManager, noteTitle = 'Note' } = options;
 
     try {
       // Check content limits and truncate if necessary
       const truncationResult = checkAndTruncateContent(text);
 
       if (truncationResult.wasTruncated) {
-        const limitType = truncationResult.truncationReason === 'words' ? 'word' : 'character';
         const limitValue = truncationResult.truncationReason === 'words' ? '5,000 words' : '30,000 characters';
 
         // Show truncation notice in progress manager
@@ -187,7 +188,7 @@ export class ChunkedGenerator {
         throw new Error('No readable text after filtering');
       }
 
-      const textChunks = ChunkedGenerator.splitTextIntoChunks(cleanText, maxChunkLength);
+      const textChunks = ChunkedGenerator.splitTextIntoChunks(cleanText);
 
       if (textChunks.length === 0) {
         throw new Error('No valid chunks created from text');
@@ -350,29 +351,14 @@ export class ChunkedGenerator {
         settings.textFiltering
       ) :
       filterMarkdown(filterFrontmatter(text));
-    const maxLength = settings?.chunkSize || ChunkedGenerator.DEFAULT_MAX_CHUNK_LENGTH;
-    return Math.ceil(cleanText.length / maxLength);
+    const byteSize = new Blob([cleanText]).size;
+    return Math.ceil(byteSize / ChunkedGenerator.EFFECTIVE_MAX_BYTES);
   }
 
   /**
-   * Get recommended chunk size based on text characteristics
+   * Get the maximum chunk size in bytes (always 4096 - safety buffer)
    */
-  static getRecommendedChunkSize(text: string, settings?: EdgeTTSPluginSettings): number {
-    const userChunkSize = settings?.chunkSize || ChunkedGenerator.DEFAULT_MAX_CHUNK_LENGTH;
-    const cleanText = settings ?
-      filterMarkdown(
-        filterFrontmatter(text, settings.textFiltering.filterFrontmatter),
-        settings.textFiltering
-      ) :
-      filterMarkdown(filterFrontmatter(text));
-
-    // For very long texts, use smaller chunks to prevent memory issues
-    if (cleanText.length > 50000) {
-      return Math.min(userChunkSize, 7000);
-    } else if (cleanText.length > 20000) {
-      return Math.min(userChunkSize, 8000);
-    } else {
-      return userChunkSize;
-    }
+  static getMaxChunkBytes(): number {
+    return ChunkedGenerator.EFFECTIVE_MAX_BYTES;
   }
 } 

@@ -62,7 +62,6 @@ export interface EdgeTTSPluginSettings {
   enableQueueFeature: boolean;
   queueManagerPosition: { x: number; y: number } | null;
   autoPauseOnWindowBlur: boolean;
-  chunkSize: number;
 
   // Experimental and mobile-specific features
   enableExperimentalFeatures: boolean;
@@ -136,7 +135,6 @@ export const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
   enableQueueFeature: true,
   queueManagerPosition: null,
   autoPauseOnWindowBlur: false,
-  chunkSize: 9000,
 
   // Experimental and mobile-specific features
   enableExperimentalFeatures: false,
@@ -336,8 +334,8 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
       chunkedInfoText.style.fontSize = '13px';
       chunkedInfoText.style.color = 'var(--text-muted)';
       chunkedInfoText.innerHTML = `
-        <strong>Note:</strong> For long notes (over ~1500 words or 9000 characters), MP3 generation will automatically use 
-        a chunked approach. This splits the text into smaller parts, generates audio for each part, then combines them. 
+        <strong>Note:</strong> For long notes (text exceeding 4096 bytes), MP3 generation will automatically use 
+        a chunked approach. This splits the text into smaller parts (max 4096 bytes each), generates audio for each part, then combines them. 
         A progress indicator will show the status of each chunk during generation.
       `;
       chunkedInfo.appendChild(chunkedInfoText);
@@ -868,22 +866,9 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
       `;
     }
 
-    containerEl.createEl('h3', { text: 'Extra settings' });
+    // containerEl.createEl('h3', { text: 'Extra settings' });
 
     // Legacy ampersand escaping setting removed - edge-tts-universal handles XML escaping internally
-
-    new Setting(containerEl)
-      .setName('Chunk size for long notes')
-      .setDesc('Maximum characters per chunk when generating MP3 for long notes. Smaller chunks may be more reliable but take longer. Default: 9000')
-      .addSlider(slider => {
-        slider.setLimits(5000, 15000, 1000);
-        slider.setValue(this.plugin.settings.chunkSize);
-        slider.onChange(async (value) => {
-          this.plugin.settings.chunkSize = value;
-          await this.plugin.saveSettings();
-        });
-        slider.setDynamicTooltip();
-        slider.showTooltip();
-      });
+    // Legacy chunk size setting removed - chunking is now fixed at 4096 bytes due to API limits
   }
 } 

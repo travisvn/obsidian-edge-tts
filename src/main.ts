@@ -225,6 +225,14 @@ export default class EdgeTTSPlugin extends Plugin {
 			}
 		});
 
+		this.addCommand({
+			id: 'read-from-cursor',
+			name: 'Read from cursor aloud',
+			editorCallback: (editor, view) => {
+				this.readFromCursor(editor, view);
+			}
+		});
+
 		// Queue management commands (only if queue feature is enabled)
 		if (this.settings.enableQueueFeature) {
 			this.addCommand({
@@ -400,6 +408,23 @@ export default class EdgeTTSPlugin extends Plugin {
 				new Notice(`Media Session Debug:\n${info.join('\n')}`, 12000);
 			}
 		});
+	}
+
+	async readFromCursor(editor?: Editor, view?: MarkdownView | MarkdownFileInfo): Promise<void> {
+		if (!editor && view) editor = view.editor;
+
+		if (!editor) {
+			if (shouldShowNotices(this.settings)) new Notice('No editor or view available.');
+			return;
+		}
+		const lastLine = editor.lastLine();
+		const lastChar = editor.getLine(lastLine).length;
+		const textFromCursor = editor.getRange(editor.getCursor(), { line: lastLine, ch: lastChar });
+		if (textFromCursor.trim()) {
+			this.audioManager.startPlayback(textFromCursor);
+		} else {
+			if (shouldShowNotices(this.settings)) new Notice('No text from cursor selected or available.');
+		}
 	}
 
 	/**
@@ -599,8 +624,7 @@ export default class EdgeTTSPlugin extends Plugin {
 				text,
 				settings: this.settings,
 				progressManager: this.chunkedProgressManager,
-				noteTitle,
-				maxChunkLength: ChunkedGenerator.getRecommendedChunkSize(text, this.settings)
+				noteTitle
 			});
 
 			if (buffer) {

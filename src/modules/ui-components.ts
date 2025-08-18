@@ -246,6 +246,15 @@ export class UIManager {
           });
         }
 
+        menu.addItem((item: any) => {
+          item
+            .setTitle('Read from cursor aloud')
+            .setIcon('cursor')
+            .onClick(async () => {
+              this.plugin.readFromCursor(editor, view);
+            });
+        });
+
         // Only show MP3 generation on desktop
         if (this.settings.generateMP3 && !Platform.isMobile) {
           menu.addItem((item: any) => {

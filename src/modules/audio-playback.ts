@@ -1,7 +1,8 @@
 import { EdgeTTSPluginSettings } from './settings';
 import { Notice, Platform } from 'obsidian';
 import { UniversalTTSClient as EdgeTTSClient, OUTPUT_FORMAT, createProsodyOptions } from './tts-client-wrapper';
-import { filterFrontmatter, filterMarkdown, shouldShowNotices } from '../utils';
+import { filterFrontmatter, filterMarkdown, shouldShowNotices, checkAndTruncateContent } from '../utils';
+import { ChunkedGenerator } from './chunked-generator';
 
 // Create a ProsodyOptions class that matches the old API
 class ProsodyOptions {
@@ -535,11 +536,42 @@ export class AudioPlaybackManager {
       this.isStreamingWithMSE = false; // Reset flag
       return;
     }
-    const cleanText = this.settings ? filterMarkdown(filterFrontmatter(selectedText), this.settings.textFiltering, this.settings.symbolReplacement) : filterMarkdown(filterFrontmatter(selectedText));
+    let cleanText = this.settings ? filterMarkdown(filterFrontmatter(selectedText), this.settings.textFiltering, this.settings.symbolReplacement) : filterMarkdown(filterFrontmatter(selectedText));
     if (!cleanText.trim()) {
       if (this.settings.showNotices) new Notice('No readable text after filtering.');
       if (!this.settings.disablePlaybackControlPopover) this.hideFloatingPlayerCallback();
       this.isStreamingWithMSE = false; // Reset flag
+      return;
+    }
+
+    // 3.4 Apply content limits and truncate if necessary
+    const truncationResult = checkAndTruncateContent(cleanText);
+    if (truncationResult.wasTruncated) {
+      const limitValue = truncationResult.truncationReason === 'words' ? '2,500 words' : '15,000 characters';
+
+      if (shouldShowNotices(this.settings)) {
+        new Notice(
+          `Content exceeds playback limit (${limitValue}). ` +
+          `Playing first ${truncationResult.finalWordCount.toLocaleString()} words ` +
+          `(${truncationResult.finalCharCount.toLocaleString()} characters). ` +
+          `Original content had ${truncationResult.originalWordCount.toLocaleString()} words.`,
+          8000 // Show notice for 8 seconds
+        );
+        new Notice(
+          `For now, select the next part of the text to play, right click, and select Read note aloud`,
+          10000 // Show notice for 10 seconds
+        );
+      }
+    }
+    cleanText = truncationResult.content;
+
+    // 3.5 Check if text exceeds 4096 byte limit and chunk if necessary
+    const textByteSize = new Blob([cleanText]).size;
+    const MAX_TTS_BYTES = 4096 - 100; // Safety buffer for encoding differences
+
+    if (textByteSize > MAX_TTS_BYTES) {
+      // Text is too long, need to process in chunks
+      await this.processChunkedPlayback(cleanText, activePlaybackAttemptId, useMSE);
       return;
     }
 
@@ -1419,5 +1451,263 @@ export class AudioPlaybackManager {
    */
   getLoopEnabled(): boolean {
     return this.loopEnabled;
+  }
+
+  /**
+   * Process chunked playback for text exceeding 4096 bytes
+   */
+  private async processChunkedPlayback(cleanText: string, activePlaybackAttemptId: number, useMSE: boolean): Promise<void> {
+    try {
+      // Split text into chunks
+      const textChunks = this.splitTextIntoChunks(cleanText);
+
+      if (textChunks.length === 0) {
+        if (shouldShowNotices(this.settings)) new Notice('Failed to split text into chunks.');
+        if (!this.settings.disablePlaybackControlPopover) this.hideFloatingPlayerCallback();
+        this.isStreamingWithMSE = false;
+        return;
+      }
+
+      if (shouldShowNotices(this.settings)) {
+        new Notice(`Playing ${textChunks.length} chunks of text...`);
+      }
+
+      // Process each chunk sequentially
+      for (let i = 0; i < textChunks.length; i++) {
+        if (this.currentPlaybackId !== activePlaybackAttemptId) {
+          return; // Playback was stopped
+        }
+
+        const chunk = textChunks[i];
+
+        if (useMSE) {
+          await this.processChunkMSE(chunk, activePlaybackAttemptId, i === 0);
+        } else {
+          await this.processChunkFallback(chunk, activePlaybackAttemptId, i === 0);
+        }
+      }
+
+      // End the stream
+      if (useMSE) {
+        await this.finishMSEPlayback(activePlaybackAttemptId);
+      } else {
+        await this.finishFallbackPlayback(activePlaybackAttemptId);
+      }
+
+    } catch (error) {
+      console.error('Error in chunked playback:', error);
+      if (shouldShowNotices(this.settings)) {
+        new Notice('Error processing chunked audio playback.');
+      }
+      if (!this.settings.disablePlaybackControlPopover) {
+        this.hideFloatingPlayerCallback();
+      }
+      this.isStreamingWithMSE = false;
+    }
+  }
+
+  /**
+   * Split text into chunks of max 4096 bytes each
+   */
+  private splitTextIntoChunks(text: string): string[] {
+    const maxBytes = 4096 - 100; // Safety buffer
+    const chunks: string[] = [];
+    let currentChunk = '';
+
+    // Helper function to get byte size
+    const getByteSize = (str: string): number => new Blob([str]).size;
+
+    // Split by paragraphs first
+    const paragraphs = text.split(/\n\s*\n/);
+
+    for (const paragraph of paragraphs) {
+      if (getByteSize(paragraph) > maxBytes) {
+        // If current chunk has content, save it
+        if (currentChunk.trim()) {
+          chunks.push(currentChunk.trim());
+          currentChunk = '';
+        }
+
+        // Split large paragraph by sentences
+        const sentences = paragraph.split(/(?<=[.!?])\s+/);
+        for (const sentence of sentences) {
+          if (getByteSize(sentence) > maxBytes) {
+            // Split very long sentences by words
+            const words = sentence.split(/\s+/);
+            let wordChunk = '';
+
+            for (const word of words) {
+              const potentialChunk = wordChunk + (wordChunk ? ' ' : '') + word;
+              if (getByteSize(potentialChunk) > maxBytes) {
+                if (wordChunk.trim()) {
+                  chunks.push(wordChunk.trim());
+                }
+                wordChunk = word;
+              } else {
+                wordChunk = potentialChunk;
+              }
+            }
+
+            if (wordChunk.trim()) {
+              currentChunk = wordChunk.trim();
+            }
+          } else {
+            const potentialChunk = currentChunk + (currentChunk ? ' ' : '') + sentence;
+            if (getByteSize(potentialChunk) > maxBytes) {
+              if (currentChunk.trim()) {
+                chunks.push(currentChunk.trim());
+              }
+              currentChunk = sentence;
+            } else {
+              currentChunk = potentialChunk;
+            }
+          }
+        }
+      } else {
+        const potentialChunk = currentChunk + (currentChunk ? '\n\n' : '') + paragraph;
+        if (getByteSize(potentialChunk) > maxBytes && currentChunk.trim()) {
+          chunks.push(currentChunk.trim());
+          currentChunk = paragraph;
+        } else {
+          currentChunk = potentialChunk;
+        }
+      }
+    }
+
+    // Add final chunk
+    if (currentChunk.trim()) {
+      chunks.push(currentChunk.trim());
+    }
+
+    return chunks;
+  }
+
+  /**
+   * Process a single chunk with MSE
+   */
+  private async processChunkMSE(chunk: string, activePlaybackAttemptId: number, isFirstChunk: boolean): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const tts = new EdgeTTSClient();
+        const voiceToUse = this.settings.customVoice.trim() || this.settings.selectedVoice;
+
+        tts.setMetadata(voiceToUse, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3).then(() => {
+          const prosodyOptions = new ProsodyOptions();
+          prosodyOptions.rate = this.settings.playbackSpeed;
+
+          const readable = tts.toStream(chunk, prosodyOptions);
+
+          readable.on('data', (data: Uint8Array) => {
+            if (this.currentPlaybackId !== activePlaybackAttemptId) {
+              return;
+            }
+            this.completeMp3BufferArray.push(data);
+            this.mseAudioQueue.push(data);
+
+            // Set up MSE if this is the first chunk
+            if (isFirstChunk && !this.sourceBuffer) {
+              this.setupMSEForChunks(activePlaybackAttemptId);
+            }
+
+            this.appendNextChunkToSourceBuffer();
+          });
+
+          readable.on('end', () => {
+            resolve();
+          });
+
+          // Add error handling if possible
+          try {
+            (readable as any).on('error', (error: any) => {
+              reject(error);
+            });
+          } catch (e) {
+            // Error listener couldn't be attached, continue
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * Process a single chunk with fallback method
+   */
+  private async processChunkFallback(chunk: string, activePlaybackAttemptId: number, isFirstChunk: boolean): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const tts = new EdgeTTSClient();
+        const voiceToUse = this.settings.customVoice.trim() || this.settings.selectedVoice;
+
+        tts.setMetadata(voiceToUse, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3).then(() => {
+          const prosodyOptions = new ProsodyOptions();
+          prosodyOptions.rate = this.settings.playbackSpeed;
+
+          const readable = tts.toStream(chunk, prosodyOptions);
+
+          readable.on('data', (data: Uint8Array) => {
+            if (this.currentPlaybackId !== activePlaybackAttemptId) {
+              return;
+            }
+            this.completeMp3BufferArray.push(data);
+          });
+
+          readable.on('end', () => {
+            resolve();
+          });
+
+          // Add error handling if possible
+          try {
+            (readable as any).on('error', (error: any) => {
+              reject(error);
+            });
+          } catch (e) {
+            // Error listener couldn't be attached, continue
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * Set up MSE for chunked playback
+   */
+  private setupMSEForChunks(activePlaybackAttemptId: number): void {
+    if (!this.mediaSource) {
+      this.mediaSource = new MediaSource();
+      this.audioElement.src = URL.createObjectURL(this.mediaSource);
+
+      this.mediaSource.addEventListener('sourceopen', () => {
+        if (this.currentPlaybackId !== activePlaybackAttemptId || !this.mediaSource) return;
+
+        try {
+          this.sourceBuffer = this.mediaSource.addSourceBuffer('audio/mpeg');
+          this.sourceBuffer.mode = 'sequence';
+
+          this.sourceBuffer.addEventListener('updateend', () => {
+            this.isAppendingBuffer = false;
+            if (!this.isPaused && this.audioElement.paused && this.sourceBuffer && this.sourceBuffer.buffered.length > 0) {
+              this.audioElement.play().catch(error => {
+                console.error("Error starting chunked MSE playback:", error);
+              });
+            }
+            this.appendNextChunkToSourceBuffer();
+          });
+
+          this.sourceBuffer.addEventListener('error', (ev) => {
+            console.error('SourceBuffer error in chunked playback', ev);
+            this.stopPlaybackInternal();
+          });
+
+          this.appendNextChunkToSourceBuffer();
+        } catch (e) {
+          console.error('Error setting up MediaSource for chunks:', e);
+          this.stopPlaybackInternal();
+        }
+      });
+    }
   }
 } 
