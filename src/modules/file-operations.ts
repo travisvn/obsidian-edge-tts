@@ -1,4 +1,5 @@
 import { Editor, FileSystemAdapter, getLanguage, MarkdownView, Notice, TFile, normalizePath, Platform } from 'obsidian';
+import { toArrayBuffer } from '../utils';
 import { EdgeTTSPluginSettings, defaultSelectedTextMp3Name } from './settings';
 
 // Mobile-compatible path helpers (only import path/os on desktop)
@@ -279,7 +280,9 @@ export class FileOperationsManager {
         await adapter.mkdir(tempDir);
       }
 
-      await adapter.writeBinary(this.tempAudioPath, finalBuffer);
+      // Convert to a true ArrayBuffer for Obsidian's API
+      const arrayBuffer: ArrayBuffer = toArrayBuffer(finalBuffer);
+      await adapter.writeBinary(this.tempAudioPath, arrayBuffer);
       // console.log('Temporary audio saved to:', this.tempAudioPath);
       return this.app.vault.adapter.getResourcePath(this.tempAudioPath);
     } catch (error) {

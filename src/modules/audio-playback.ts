@@ -1,7 +1,7 @@
 import { EdgeTTSPluginSettings } from './settings';
 import { Notice, Platform } from 'obsidian';
 import { UniversalTTSClient as EdgeTTSClient, OUTPUT_FORMAT, createProsodyOptions } from './tts-client-wrapper';
-import { filterFrontmatter, filterMarkdown, shouldShowNotices, checkAndTruncateContent } from '../utils';
+import { filterFrontmatter, filterMarkdown, shouldShowNotices, checkAndTruncateContent, toArrayBuffer } from '../utils';
 import { ChunkedGenerator } from './chunked-generator';
 
 // Create a ProsodyOptions class that matches the old API
@@ -891,17 +891,8 @@ export class AudioPlaybackManager {
    */
   private fallbackToBlobPlayback(buffer: Buffer | Uint8Array, activePlaybackAttemptId: number): void {
     try {
-      // Convert to ArrayBuffer for blob
-      let arrayBuffer: ArrayBuffer;
-
-      // Simple conversion that works for both Buffer and Uint8Array
-      if (buffer instanceof Uint8Array) {
-        arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-      } else {
-        // Convert Buffer to Uint8Array first, then to ArrayBuffer
-        const uint8Array = new Uint8Array(buffer);
-        arrayBuffer = uint8Array.buffer.slice(uint8Array.byteOffset, uint8Array.byteOffset + uint8Array.byteLength);
-      }
+      // Convert to a true ArrayBuffer for blob (avoids SAB typing issues)
+      const arrayBuffer: ArrayBuffer = toArrayBuffer(buffer);
 
       // Create blob and play - use MP3 MIME type
       const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });

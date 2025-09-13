@@ -156,6 +156,18 @@ export function replaceComparisonSymbols(text: string, settings?: EdgeTTSPluginS
   return processedLines.join('\n');
 }
 
+/**
+ * Convert a Buffer or Uint8Array to a true ArrayBuffer.
+ * Avoids ArrayBuffer | SharedArrayBuffer union issues in newer TypeScript libdom.
+ */
+export function toArrayBuffer(data: Buffer | Uint8Array): ArrayBuffer {
+  // Buffer is a subclass of Uint8Array; treat uniformly
+  const view = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const ab = new ArrayBuffer(view.byteLength);
+  new Uint8Array(ab).set(view);
+  return ab;
+}
+
 // Legacy XML escaping functions - no longer needed since edge-tts-universal handles this internally
 // export function escapeAmpersand(text: string): string {
 //   return text.replace(/&/g, '&amp;')  // Escape '&'
