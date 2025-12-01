@@ -233,6 +233,25 @@ export default class EdgeTTSPlugin extends Plugin {
 			}
 		});
 
+		// Read aloud on click (desktop only)
+		if (!Platform.isMobile) {
+			this.addCommand({
+				id: 'read-on-click',
+				name: 'Toggle read-aloud on click',
+				callback: () => {
+					this.enableReadOnClick = !this.enableReadOnClick;
+					new Notice((this.enableReadOnClick ? 'Enable' : 'Disable') + ' read-aloud on click');
+				}
+			});
+			this.registerDomEvent(document, 'click', evt => {
+				if (this.enableReadOnClick) {
+					const el = evt.target.closest('p, .cm-line');
+					const text = el?.textContent.trim();
+					if (text) this.audioManager.startPlayback(text);
+				}
+			});
+		}
+
 		// Queue management commands (only if queue feature is enabled)
 		if (this.settings.enableQueueFeature) {
 			this.addCommand({
