@@ -1,6 +1,6 @@
-import { Plugin, MarkdownView, Notice, Editor, MarkdownFileInfo, Platform } from 'obsidian';
+import { Plugin, MarkdownView, Notice, Editor, MarkdownFileInfo, Platform, TFile, resolveSubpath, type EditorPosition } from 'obsidian';
 import { EdgeTTSPluginSettings, EdgeTTSPluginSettingTab, DEFAULT_SETTINGS } from './modules/settings';
-import { AudioPlaybackManager } from './modules/audio-playback';
+import { AudioPlaybackManager, type PlaybackHighlightSource } from './modules/audio-playback';
 import { FileOperationsManager } from './modules/file-operations';
 import { UIManager } from './modules/ui-components';
 import { TTSEngine, TTSTaskStatus } from './modules/tts-engine';
@@ -23,6 +23,8 @@ export default class EdgeTTSPlugin extends Plugin {
 
 	// Task tracking for MP3 generation
 	private mp3GenerationTasks: Map<string, { taskId: string, editor?: Editor, filePath?: string }> = new Map();
+	private readonly MAX_EMBED_EXPANSION_DEPTH = 5;
+	private readonly SECTION_CONFIG_REGEX = /<!--\s*edge-tts:section\s+([^]*?)-->/i;
 
 	async onload() {
 		if (process.env.NODE_ENV === 'development') {
@@ -141,6 +143,14 @@ export default class EdgeTTSPlugin extends Plugin {
 			name: 'Read note aloud',
 			editorCallback: (editor, view) => {
 				this.readNoteAloud(editor, view);
+			}
+		});
+
+		this.addCommand({
+			id: 'read-configured-section-aloud',
+			name: 'Read configured section aloud',
+			callback: () => {
+				this.readConfiguredSectionAloud();
 			}
 		});
 
@@ -417,11 +427,9 @@ export default class EdgeTTSPlugin extends Plugin {
 			if (shouldShowNotices(this.settings)) new Notice('No editor or view available.');
 			return;
 		}
-		const lastLine = editor.lastLine();
-		const lastChar = editor.getLine(lastLine).length;
-		const textFromCursor = editor.getRange(editor.getCursor(), { line: lastLine, ch: lastChar });
+		const textFromCursor = this.getTextFromCursor(editor);
 		if (textFromCursor.trim()) {
-			this.audioManager.startPlayback(textFromCursor);
+			this.audioManager.startPlayback(textFromCursor, editor);
 		} else {
 			if (shouldShowNotices(this.settings)) new Notice('No text from cursor selected or available.');
 		}
@@ -472,22 +480,71 @@ export default class EdgeTTSPlugin extends Plugin {
 
 	async readNoteAloud(editor?: Editor, viewInput?: MarkdownView | MarkdownFileInfo, filePath?: string): Promise<void> {
 		let selectedText = '';
+		let usedCursorDefault = false;
+		let sourcePath = filePath;
+		let sourceTextForHighlight = '';
+		let sourceStartOffset = 0;
+		let highlightSource: PlaybackHighlightSource | undefined;
 
 		if (filePath) {
 			const fileContent = await this.fileManager.extractFileContent(filePath);
 			if (fileContent) {
 				selectedText = fileContent;
+				sourceTextForHighlight = fileContent;
 			} else {
 				if (this.settings.showNotices) new Notice('Failed to read note aloud.');
 				return;
 			}
 		} else {
 			const view = viewInput ?? this.app.workspace.getActiveViewOfType(MarkdownView);
+			sourcePath = view?.file?.path;
 
 			if (!editor && view) editor = view.editor;
 
 			if (editor && view) {
-				selectedText = editor.getSelection() || editor.getValue();
+				sourceTextForHighlight = editor.getValue();
+				selectedText = editor.getSelection();
+				if (selectedText.trim()) {
+					sourceStartOffset = editor.posToOffset(editor.getCursor('from'));
+				}
+				if (!selectedText.trim() && this.settings.readFromCursorByDefault) {
+					const cursor = editor.getCursor();
+					sourceStartOffset = editor.posToOffset(cursor);
+					selectedText = this.getTextFromCursor(editor);
+					usedCursorDefault = true;
+				}
+				if (!selectedText.trim() && !usedCursorDefault) {
+					sourceStartOffset = 0;
+					selectedText = editor.getValue();
+				}
+			}
+
+			if (!selectedText.trim() && !usedCursorDefault) {
+				const activeFile = this.app.workspace.getActiveFile();
+				if (activeFile instanceof TFile) {
+					sourcePath = activeFile.path;
+					const fileContent = await this.fileManager.extractFileContent(activeFile.path);
+					if (fileContent) {
+						selectedText = fileContent;
+						sourceTextForHighlight = fileContent;
+						sourceStartOffset = 0;
+					}
+				}
+			}
+		}
+
+		if (sourcePath && selectedText.includes('![[')) {
+			if (editor && sourceTextForHighlight) {
+				const expandedSelection = await this.expandMarkdownEmbedsWithSourceMap(
+					selectedText,
+					sourcePath,
+					sourceStartOffset,
+					sourceTextForHighlight
+				);
+				selectedText = expandedSelection.text;
+				highlightSource = expandedSelection.highlightSource;
+			} else {
+				selectedText = await this.expandMarkdownEmbeds(selectedText, sourcePath);
 			}
 		}
 
@@ -510,7 +567,290 @@ export default class EdgeTTSPlugin extends Plugin {
 		}
 
 		// Use audio manager for playback with potentially truncated content
-		await this.audioManager.startPlayback(truncationResult.content);
+		await this.audioManager.startPlayback(
+			truncationResult.content,
+			editor,
+			highlightSource ? 0 : sourceStartOffset,
+			highlightSource
+		);
+	}
+
+	async readConfiguredSectionAloud(editor?: Editor, viewInput?: MarkdownView | MarkdownFileInfo): Promise<void> {
+		const view = viewInput ?? this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!editor && view) editor = view.editor;
+
+		const activeFile = view?.file ?? this.app.workspace.getActiveFile();
+		if (!(activeFile instanceof TFile)) {
+			if (shouldShowNotices(this.settings)) new Notice('No active markdown file available.');
+			return;
+		}
+
+		const sourcePath = activeFile.path;
+		const sourceText = editor ? editor.getValue() : await this.app.vault.read(activeFile);
+		const section = this.extractConfiguredSection(sourceText);
+
+		if (!section) {
+			if (shouldShowNotices(this.settings)) {
+				new Notice('No configured TTS section found. Add <!-- edge-tts:section heading="### Heading" --> to the note.');
+			}
+			return;
+		}
+
+		let sectionText = section.content;
+		let highlightSource: PlaybackHighlightSource | undefined;
+		if (sectionText.includes('![[')) {
+			const expandedSection = await this.expandMarkdownEmbedsWithSourceMap(sectionText, sourcePath, section.contentStartOffset, sourceText);
+			sectionText = expandedSection.text;
+			highlightSource = expandedSection.highlightSource;
+		}
+
+		const truncationResult = checkAndTruncateContent(sectionText);
+
+		if (truncationResult.wasTruncated && this.settings.showNotices) {
+			const limitValue = truncationResult.truncationReason === 'words' ? '5,000 words' : '30,000 characters';
+			new Notice(
+				`Content exceeds playback limit (${limitValue}). ` +
+				`Playing first ${truncationResult.finalWordCount.toLocaleString()} words ` +
+				`(${truncationResult.finalCharCount.toLocaleString()} characters).`,
+				8000
+			);
+		}
+
+		await this.audioManager.startPlayback(truncationResult.content, editor, section.contentStartOffset, highlightSource);
+	}
+
+	private extractConfiguredSection(text: string): { content: string; contentStartOffset: number } | null {
+		const configMatch = this.SECTION_CONFIG_REGEX.exec(text);
+		if (!configMatch) return null;
+
+		const headingConfig = this.getSectionConfigHeading(configMatch[1]);
+		if (!headingConfig) return null;
+
+		const headings = this.getMarkdownHeadings(text);
+		const configOffset = configMatch.index + configMatch[0].length;
+		const matchingHeading = headings.find(heading =>
+			heading.startOffset >= configOffset &&
+			heading.level === headingConfig.level &&
+			heading.text === headingConfig.text
+		) ?? headings.find(heading =>
+			heading.level === headingConfig.level &&
+			heading.text === headingConfig.text
+		);
+
+		if (!matchingHeading) return null;
+
+		const nextBoundary = headings.find(heading =>
+			heading.startOffset > matchingHeading.startOffset &&
+			heading.level <= matchingHeading.level
+		);
+		const contentEndOffset = nextBoundary?.startOffset ?? text.length;
+		const content = text.slice(matchingHeading.endOffset, contentEndOffset).trim();
+
+		return {
+			content,
+			contentStartOffset: matchingHeading.endOffset,
+		};
+	}
+
+	private getSectionConfigHeading(configText: string): { level: number; text: string } | null {
+		const headingMatch = configText.match(/\bheading\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s]+))/i);
+		const rawHeading = (headingMatch?.[1] ?? headingMatch?.[2] ?? headingMatch?.[3] ?? '').trim();
+		if (!rawHeading) return null;
+
+		const parsedHeading = rawHeading.match(/^(#{1,6})\s+(.+)$/);
+		if (!parsedHeading) return null;
+
+		return {
+			level: parsedHeading[1].length,
+			text: this.normalizeHeadingText(parsedHeading[2]),
+		};
+	}
+
+	private getMarkdownHeadings(text: string): Array<{ level: number; text: string; startOffset: number; endOffset: number }> {
+		const headings: Array<{ level: number; text: string; startOffset: number; endOffset: number }> = [];
+		const headingRegex = /^(#{1,6})\s+(.+?)\s*#*\s*$/gm;
+		let match: RegExpExecArray | null;
+
+		while ((match = headingRegex.exec(text)) !== null) {
+			headings.push({
+				level: match[1].length,
+				text: this.normalizeHeadingText(match[2]),
+				startOffset: match.index,
+				endOffset: headingRegex.lastIndex,
+			});
+		}
+
+		return headings;
+	}
+
+	private normalizeHeadingText(headingText: string): string {
+		return headingText
+			.replace(/\s+#+\s*$/u, '')
+			.trim();
+	}
+
+	private getTextFromCursor(editor: Editor): string {
+		const lastLine = editor.lastLine();
+		const lastChar = editor.getLine(lastLine).length;
+		return editor.getRange(editor.getCursor(), { line: lastLine, ch: lastChar });
+	}
+
+	private async expandMarkdownEmbeds(text: string, sourcePath: string, depth = 0, seen = new Set<string>()): Promise<string> {
+		if (depth >= this.MAX_EMBED_EXPANSION_DEPTH) return text;
+
+		const embedRegex = /!\[\[([^\]]+)\]\]/g;
+		let expanded = '';
+		let lastIndex = 0;
+		let match: RegExpExecArray | null;
+
+		while ((match = embedRegex.exec(text)) !== null) {
+			expanded += text.slice(lastIndex, match.index);
+			expanded += await this.expandMarkdownEmbed(match[0], match[1], sourcePath, depth, seen);
+			lastIndex = match.index + match[0].length;
+		}
+
+		expanded += text.slice(lastIndex);
+		return expanded;
+	}
+
+	private async expandMarkdownEmbedsWithSourceMap(
+		text: string,
+		sourcePath: string,
+		sourceStartOffset: number,
+		sourceText: string,
+		depth = 0,
+		seen = new Set<string>()
+	): Promise<{ text: string; highlightSource: PlaybackHighlightSource }> {
+		if (depth >= this.MAX_EMBED_EXPANSION_DEPTH) {
+			return {
+				text,
+				highlightSource: this.createPlaybackHighlightSource(text, sourceText, [{
+					outputStart: 0,
+					outputEnd: text.length,
+					sourceStart: sourceStartOffset,
+					sourceEnd: sourceStartOffset + text.length,
+				}]),
+			};
+		}
+
+		const mappings: Array<{ outputStart: number; outputEnd: number; sourceStart: number; sourceEnd: number }> = [];
+		const embedRegex = /!\[\[([^\]]+)\]\]/g;
+		let expanded = '';
+		let lastIndex = 0;
+		let match: RegExpExecArray | null;
+
+		const appendSourceText = (chunk: string, localStart: number, localEnd: number) => {
+			if (!chunk) return;
+			const outputStart = expanded.length;
+			expanded += chunk;
+			mappings.push({
+				outputStart,
+				outputEnd: expanded.length,
+				sourceStart: sourceStartOffset + localStart,
+				sourceEnd: sourceStartOffset + localEnd,
+			});
+		};
+
+		while ((match = embedRegex.exec(text)) !== null) {
+			appendSourceText(text.slice(lastIndex, match.index), lastIndex, match.index);
+
+			const embedStart = match.index;
+			const embedEnd = match.index + match[0].length;
+			const outputStart = expanded.length;
+			const expandedEmbed = await this.expandMarkdownEmbed(match[0], match[1], sourcePath, depth, seen);
+			expanded += expandedEmbed;
+			mappings.push({
+				outputStart,
+				outputEnd: expanded.length,
+				sourceStart: sourceStartOffset + embedStart,
+				sourceEnd: sourceStartOffset + embedEnd,
+			});
+			lastIndex = embedEnd;
+		}
+
+		appendSourceText(text.slice(lastIndex), lastIndex, text.length);
+
+		return {
+			text: expanded,
+			highlightSource: this.createPlaybackHighlightSource(expanded, sourceText, mappings),
+		};
+	}
+
+	private createPlaybackHighlightSource(
+		text: string,
+		sourceText: string,
+		mappings: Array<{ outputStart: number; outputEnd: number; sourceStart: number; sourceEnd: number }>
+	): PlaybackHighlightSource {
+		const offsetToEditorPos = (offset: number): EditorPosition => {
+			const sourceOffset = this.mapPlaybackOffsetToSourceOffset(offset, mappings);
+			const textBeforeOffset = sourceText.substring(0, Math.max(0, Math.min(sourceOffset, sourceText.length)));
+			const lines = textBeforeOffset.split('\n');
+			return { line: lines.length - 1, ch: lines[lines.length - 1].length };
+		};
+
+		return { text, offsetToEditorPos };
+	}
+
+	private mapPlaybackOffsetToSourceOffset(
+		offset: number,
+		mappings: Array<{ outputStart: number; outputEnd: number; sourceStart: number; sourceEnd: number }>
+	): number {
+		const mapping = mappings.find(mapping => offset >= mapping.outputStart && offset <= mapping.outputEnd) ?? mappings[mappings.length - 1];
+		if (!mapping) return 0;
+
+		const outputLength = mapping.outputEnd - mapping.outputStart;
+		const sourceLength = mapping.sourceEnd - mapping.sourceStart;
+		if (outputLength <= 0 || sourceLength <= 0) return mapping.sourceStart;
+
+		const progress = Math.max(0, Math.min(1, (offset - mapping.outputStart) / outputLength));
+		return Math.floor(mapping.sourceStart + sourceLength * progress);
+	}
+
+	private async expandMarkdownEmbed(originalEmbed: string, rawTarget: string, sourcePath: string, depth: number, seen: Set<string>): Promise<string> {
+		const target = rawTarget.split('|')[0]?.trim();
+		if (!target) return originalEmbed;
+
+		const hashIndex = target.indexOf('#');
+		const linkpath = hashIndex === -1 ? target : target.slice(0, hashIndex);
+		const subpath = hashIndex === -1 ? '' : target.slice(hashIndex);
+		const linkedFile = linkpath
+			? this.app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath)
+			: this.app.vault.getAbstractFileByPath(sourcePath);
+
+		if (!(linkedFile instanceof TFile) || linkedFile.extension !== 'md') {
+			return originalEmbed;
+		}
+
+		const seenKey = `${linkedFile.path}${subpath}`;
+		if (seen.has(seenKey)) return '';
+
+		seen.add(seenKey);
+
+		try {
+			const linkedContent = await this.app.vault.read(linkedFile);
+			const embeddedContent = this.extractEmbedSubpathContent(linkedContent, linkedFile, subpath);
+			const expandedContent = await this.expandMarkdownEmbeds(embeddedContent, linkedFile.path, depth + 1, seen);
+			return `\n\n${expandedContent.trim()}\n\n`;
+		} catch (error) {
+			console.error('Failed to expand embedded note for TTS:', { target, sourcePath, error });
+			return originalEmbed;
+		} finally {
+			seen.delete(seenKey);
+		}
+	}
+
+	private extractEmbedSubpathContent(content: string, file: TFile, subpath: string): string {
+		if (!subpath) return content;
+
+		const cache = this.app.metadataCache.getFileCache(file);
+		if (!cache) return content;
+
+		const resolvedSubpath = resolveSubpath(cache, subpath);
+		if (resolvedSubpath?.type !== 'heading') return content;
+
+		const start = resolvedSubpath.current.position.end.offset;
+		const end = resolvedSubpath.next?.position.start.offset ?? content.length;
+		return content.slice(start, end).trim();
 	}
 
 	async generateMP3(editor?: Editor, viewInput?: MarkdownView | MarkdownFileInfo, filePath?: string): Promise<void> {
@@ -523,6 +863,7 @@ export default class EdgeTTSPlugin extends Plugin {
 		}
 
 		let selectedText = '';
+		let sourcePath = filePath;
 
 		if (filePath) {
 			const fileContent = await this.fileManager.extractFileContent(filePath);
@@ -534,12 +875,17 @@ export default class EdgeTTSPlugin extends Plugin {
 			}
 		} else {
 			const view = viewInput ?? this.app.workspace.getActiveViewOfType(MarkdownView);
+			sourcePath = view?.file?.path;
 
 			if (!editor && view) editor = view.editor;
 
 			if (editor && view) {
 				selectedText = editor.getSelection() || editor.getValue();
 			}
+		}
+
+		if (sourcePath && selectedText.includes('![[')) {
+			selectedText = await this.expandMarkdownEmbeds(selectedText, sourcePath);
 		}
 
 		if (!selectedText.trim()) {

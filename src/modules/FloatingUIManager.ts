@@ -160,15 +160,16 @@ export class FloatingUIManager {
         currentTitle: queueStatus.queue[queueStatus.currentIndex]?.title,
         isPlayingFromQueue: queueStatus.isPlayingFromQueue
       } : undefined;
+      const isPaused = !this.currentPlaybackState.isPlaying;
 
       this.reactRoot.render(
         React.createElement(FloatingPlayerUI, {
           isVisible: this.isPlayerVisible,
           onClose: () => this.hidePlayer(),
-          onPause: this.audioManager.isPlaybackPaused() ? undefined : () => this.audioManager.pausePlayback(),
-          onResume: this.audioManager.isPlaybackPaused() ? () => this.audioManager.resumePlayback() : undefined,
+          onPause: isPaused ? undefined : () => this.audioManager.pausePlayback(),
+          onResume: isPaused ? () => this.audioManager.resumePlayback() : undefined,
           onStop: () => this.audioManager.stopPlayback(),
-          isPaused: !this.currentPlaybackState.isPlaying, // Use state passed from AudioPlaybackManager
+          isPaused,
           initialPosition: playerInitialPosition,
           onDragEnd: (position) => {
             this.lastPosition = position;
@@ -234,4 +235,4 @@ export class FloatingUIManager {
       clearTimeout(this.resizeDebounceTimeout);
     }
   }
-} 
+}

@@ -1,5 +1,5 @@
 import { EdgeTTSPluginSettings } from './settings';
-import { Notice, Platform } from 'obsidian';
+import { getLanguage, Notice, Platform, type Editor, type EditorPosition } from 'obsidian';
 import { UniversalTTSClient as EdgeTTSClient, OUTPUT_FORMAT, createProsodyOptions } from './tts-client-wrapper';
 import { filterFrontmatter, filterMarkdown, shouldShowNotices, checkAndTruncateContent, toArrayBuffer } from '../utils';
 import { ChunkedGenerator } from './chunked-generator';
@@ -15,20 +15,37 @@ class ProsodyOptions {
 import type { FileOperationsManager } from './file-operations';
 import type { App } from 'obsidian';
 
+type FloatingPlayerState = {
+  currentTime: number;
+  duration: number;
+  isPlaying: boolean;
+  isLoading: boolean;
+};
+
+export type PlaybackHighlightSource = {
+  text: string;
+  offsetToEditorPos: (offset: number) => EditorPosition;
+};
+
 /**
  * Handles all audio playback functionality for the Edge TTS plugin
  */
 export class AudioPlaybackManager {
+  private static readonly FLOATING_PLAYER_PROGRESS_UPDATE_MS = 250;
+  private static readonly TEXT_HIGHLIGHT_UPDATE_MS = 100;
+
   private audioElement: HTMLAudioElement;
   private app: App;
   private fileManager: FileOperationsManager;
   private isPaused = false;
   private updateStatusBarCallback: (withControls: boolean) => void;
   private settings: EdgeTTSPluginSettings;
-  private showFloatingPlayerCallback: (data: { currentTime: number, duration: number, isPlaying: boolean, isLoading: boolean }) => void;
+  private showFloatingPlayerCallback: (data: FloatingPlayerState) => void;
   private hideFloatingPlayerCallback: () => void;
-  private updateFloatingPlayerCallback: (data: { currentTime: number, duration: number, isPlaying: boolean, isLoading: boolean }) => void;
+  private updateFloatingPlayerCallback: (data: FloatingPlayerState) => void;
   private currentPlaybackId = 0;
+  private lastFloatingPlayerState: FloatingPlayerState | null = null;
+  private lastFloatingPlayerProgressUpdate = 0;
 
   // Auto-pause functionality
   private wasPlayingBeforeBlur = false;
@@ -62,12 +79,34 @@ export class AudioPlaybackManager {
   // Media Session API integration for Android system controls
   private mediaSessionSupported = false;
 
+  // Text highlighting during playback
+  private activeEditor: Editor | null = null;
+  private highlightWords: Array<{
+    startTime: number;
+    endTime: number;
+    text: string;
+    from?: EditorPosition;
+    to?: EditorPosition;
+  }> = [];
+  private lastHighlightIndex = -1;
+  private editorContent = '';
+  private playbackHighlightSource: PlaybackHighlightSource | null = null;
+  private searchOffset = 0;
+  private lastHighlightUpdate = 0;
+  private currentHighlightRangeKey = '';
+
+  // iOS native speech fallback. Obsidian iOS cannot use Node/Electron WebSocket APIs.
+  private nativeSpeechUtterance: SpeechSynthesisUtterance | null = null;
+  private nativeSpeechText = '';
+  private isNativeSpeechActive = false;
+  private nativeSpeechFinished = false;
+
   constructor(
     settings: EdgeTTSPluginSettings,
     updateStatusBarCallback: (withControls: boolean) => void,
-    showFloatingPlayerCallback: (data: { currentTime: number, duration: number, isPlaying: boolean, isLoading: boolean }) => void,
+    showFloatingPlayerCallback: (data: FloatingPlayerState) => void,
     hideFloatingPlayerCallback: () => void,
-    updateFloatingPlayerCallback: (data: { currentTime: number, duration: number, isPlaying: boolean, isLoading: boolean }) => void,
+    updateFloatingPlayerCallback: (data: FloatingPlayerState) => void,
     fileManager: FileOperationsManager,
     app: App
   ) {
@@ -99,22 +138,22 @@ export class AudioPlaybackManager {
         if (!this.isPaused) { // Resume playback if it wasn't paused before switch
           this.audioElement.play().catch(e => console.error("Error playing after source switch:", e));
         }
-        this.updateFloatingPlayerCallback({
+        this.emitFloatingPlayerState({
           currentTime: this.audioElement.currentTime,
           duration: this.audioElement.duration, // Now we have the full file duration
           isPlaying: !this.audioElement.paused,
           isLoading: false,
-        });
+        }, true);
         return;
       }
 
       // Original onloadedmetadata logic for non-MSE playback (e.g. if we directly load a file initially)
-      this.updateFloatingPlayerCallback({
+      this.emitFloatingPlayerState({
         currentTime: this.audioElement.currentTime,
         duration: this.audioElement.duration,
         isPlaying: !this.audioElement.paused,
         isLoading: false,
-      });
+      }, true);
 
       // Set up Media Session metadata when audio is loaded
       this.updateMediaSessionMetadata(this.getCurrentAudioTitle(), this.audioElement.duration);
@@ -122,15 +161,15 @@ export class AudioPlaybackManager {
 
     this.audioElement.ontimeupdate = () => {
       if (!this.settings.disablePlaybackControlPopover) {
-        this.updateFloatingPlayerCallback({
+        this.emitProgressFloatingPlayerState({
           currentTime: this.audioElement.currentTime,
-          duration: this.isStreamingWithMSE && !this.mediaSource?.duration ? Infinity : this.audioElement.duration, // Handle MSE duration
+          duration: this.isStreamingWithMSE && !this.mediaSource?.duration ? Infinity : this.audioElement.duration,
           isPlaying: !this.audioElement.paused,
           isLoading: false,
         });
       }
-      // Update Media Session position for system controls
       this.updateMediaSessionPosition();
+      this.updateTextHighlight();
     };
 
     this.audioElement.onended = () => {
@@ -142,12 +181,12 @@ export class AudioPlaybackManager {
         // For now, we assume if enableReplayOption is on, we keep player open.
         if (this.settings.enableReplayOption && !this.settings.disablePlaybackControlPopover) {
           this.isPaused = true;
-          this.updateFloatingPlayerCallback({
+          this.emitFloatingPlayerState({
             currentTime: this.audioElement.currentTime, // Should be near duration if MSE set it
             duration: this.audioElement.duration,
             isPlaying: false,
             isLoading: false,
-          });
+          }, true);
         } else {
           this.resetPlaybackStateAndHidePlayer();
           this.updateStatusBarCallback(false);
@@ -169,12 +208,12 @@ export class AudioPlaybackManager {
         this.isPaused = true;
         this.updateStatusBarCallback(false);
         if (!this.settings.disablePlaybackControlPopover) {
-          this.updateFloatingPlayerCallback({
+          this.emitFloatingPlayerState({
             currentTime: this.audioElement.duration,
             duration: this.audioElement.duration,
             isPlaying: false,
             isLoading: false,
-          });
+          }, true);
         }
       } else {
         this.resetPlaybackStateAndHidePlayer();
@@ -186,12 +225,12 @@ export class AudioPlaybackManager {
       this.isPaused = true; // isPaused is critical for our logic
       this.updateStatusBarCallback(true);
       if (!this.settings.disablePlaybackControlPopover) {
-        this.updateFloatingPlayerCallback({
+        this.emitFloatingPlayerState({
           currentTime: this.audioElement.currentTime,
           duration: this.isStreamingWithMSE && !this.mediaSource?.duration ? Infinity : this.audioElement.duration,
           isPlaying: false,
           isLoading: false, // isLoading is false if paused
-        });
+        }, true);
       }
 
       // Update Media Session state
@@ -205,12 +244,12 @@ export class AudioPlaybackManager {
       // isLoading state is handled by the updateFloatingPlayerCallback
       this.updateStatusBarCallback(true);
       if (!this.settings.disablePlaybackControlPopover) {
-        this.updateFloatingPlayerCallback({
+        this.emitFloatingPlayerState({
           currentTime: this.audioElement.currentTime,
           duration: this.isStreamingWithMSE && !this.mediaSource?.duration ? Infinity : this.audioElement.duration,
           isPlaying: true,
           isLoading: false, // When actually playing, loading is done for that segment/file
-        });
+        }, true);
       }
 
       // Update Media Session state and metadata when playback starts
@@ -252,6 +291,47 @@ export class AudioPlaybackManager {
         this.resumePlayback();
       }
     });
+  }
+
+  private emitFloatingPlayerState(data: FloatingPlayerState, force = false): void {
+    if (this.settings.disablePlaybackControlPopover) return;
+
+    if (!force && this.lastFloatingPlayerState && this.isSameFloatingPlayerState(this.lastFloatingPlayerState, data)) {
+      return;
+    }
+
+    if (force) {
+      this.lastFloatingPlayerState = null;
+    }
+    this.updateFloatingPlayerCallback(data);
+  }
+
+  private emitProgressFloatingPlayerState(data: FloatingPlayerState): void {
+    const now = Date.now();
+    const lastState = this.lastFloatingPlayerState;
+    const playbackStateChanged = !lastState ||
+      lastState.isPlaying !== data.isPlaying ||
+      lastState.isLoading !== data.isLoading ||
+      !this.areDurationsEqual(lastState.duration, data.duration);
+
+    if (!playbackStateChanged && now - this.lastFloatingPlayerProgressUpdate < AudioPlaybackManager.FLOATING_PLAYER_PROGRESS_UPDATE_MS) {
+      return;
+    }
+
+    this.lastFloatingPlayerProgressUpdate = now;
+    this.emitFloatingPlayerState(data, playbackStateChanged);
+  }
+
+  private isSameFloatingPlayerState(a: FloatingPlayerState, b: FloatingPlayerState): boolean {
+    return Math.abs(a.currentTime - b.currentTime) < 0.05 &&
+      this.areDurationsEqual(a.duration, b.duration) &&
+      a.isPlaying === b.isPlaying &&
+      a.isLoading === b.isLoading;
+  }
+
+  private areDurationsEqual(a: number, b: number): boolean {
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return a === b;
+    return Math.abs(a - b) < 0.05;
   }
 
   /**
@@ -500,18 +580,221 @@ export class AudioPlaybackManager {
       MediaSource.isTypeSupported('audio/mpeg');
   }
 
+  private shouldUseNativeSpeech(): boolean {
+    return Platform.isIosApp &&
+      typeof window !== 'undefined' &&
+      'speechSynthesis' in window &&
+      typeof SpeechSynthesisUtterance !== 'undefined';
+  }
+
+  private startNativeSpeechPlayback(cleanText: string, activePlaybackAttemptId: number): Promise<void> {
+    return new Promise((resolve) => {
+      const speechSynthesis = window.speechSynthesis;
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+
+      this.nativeSpeechText = cleanText;
+      this.nativeSpeechUtterance = utterance;
+      this.isNativeSpeechActive = true;
+      this.nativeSpeechFinished = false;
+      this.isPaused = false;
+
+      const nativeVoice = this.selectNativeSpeechVoice();
+      if (nativeVoice) {
+        utterance.voice = nativeVoice;
+        utterance.lang = nativeVoice.lang;
+      } else {
+        utterance.lang = this.getPreferredNativeSpeechLocale();
+      }
+      utterance.rate = Math.max(0.1, Math.min(this.settings.playbackSpeed, 10));
+
+      const emitNativeState = (isPlaying: boolean, currentTime = 0, duration = 0) => {
+        if (!this.settings.disablePlaybackControlPopover) {
+          this.emitFloatingPlayerState({
+            currentTime,
+            duration,
+            isPlaying,
+            isLoading: false,
+          }, true);
+        }
+        this.updateStatusBarCallback(isPlaying || this.isPaused);
+        this.notifyQueueUIUpdate();
+      };
+
+      utterance.onstart = () => {
+        if (this.currentPlaybackId !== activePlaybackAttemptId) return;
+        this.isPaused = false;
+        this.isNativeSpeechActive = true;
+        emitNativeState(true);
+      };
+
+      utterance.onpause = () => {
+        if (this.currentPlaybackId !== activePlaybackAttemptId) return;
+        this.isPaused = true;
+        emitNativeState(false);
+      };
+
+      utterance.onresume = () => {
+        if (this.currentPlaybackId !== activePlaybackAttemptId) return;
+        this.isPaused = false;
+        emitNativeState(true);
+      };
+
+      utterance.onboundary = (event) => {
+        if (this.currentPlaybackId !== activePlaybackAttemptId) return;
+        this.updateNativeSpeechHighlight(event);
+      };
+
+      utterance.onerror = (event) => {
+        if (this.currentPlaybackId !== activePlaybackAttemptId) return;
+        console.error('Native speech synthesis error:', event);
+        this.isNativeSpeechActive = false;
+        this.nativeSpeechUtterance = null;
+        if (shouldShowNotices(this.settings)) new Notice('Native iOS speech playback failed.');
+        if (!this.settings.disablePlaybackControlPopover) {
+          this.updateFloatingPlayerCallback({ currentTime: 0, duration: 0, isPlaying: false, isLoading: false });
+          this.hideFloatingPlayerCallback();
+        }
+        this.updateStatusBarCallback(false);
+        this.notifyQueueUIUpdate();
+      };
+
+      utterance.onend = () => {
+        if (this.currentPlaybackId !== activePlaybackAttemptId) return;
+        this.isNativeSpeechActive = false;
+        this.nativeSpeechUtterance = null;
+        this.nativeSpeechFinished = true;
+        this.isPaused = true;
+
+        if (shouldShowNotices(this.settings)) new Notice('Finished reading aloud.');
+
+        if (this.isPlayingFromQueue && (this.currentQueueIndex < this.playbackQueue.length - 1 || (this.loopEnabled && this.playbackQueue.length > 0))) {
+          setTimeout(() => this.playNextInQueue(), 1000);
+          return;
+        }
+
+        if (this.isPlayingFromQueue) {
+          this.isPlayingFromQueue = false;
+          this.currentQueueIndex = -1;
+          this.notifyQueueUIUpdate();
+          if (this.settings.showNotices) new Notice('Finished playing queue.');
+        }
+
+        if (this.settings.enableReplayOption && !this.settings.disablePlaybackControlPopover) {
+          this.updateStatusBarCallback(false);
+          this.emitFloatingPlayerState({
+            currentTime: 1,
+            duration: 1,
+            isPlaying: false,
+            isLoading: false,
+          }, true);
+        } else {
+          this.resetPlaybackStateAndHidePlayer();
+          this.updateStatusBarCallback(false);
+        }
+        this.notifyQueueUIUpdate();
+      };
+
+      try {
+        speechSynthesis.cancel();
+        if (!this.settings.disablePlaybackControlPopover) {
+          this.updateFloatingPlayerCallback({ currentTime: 0, duration: 0, isPlaying: false, isLoading: false });
+        }
+        speechSynthesis.speak(utterance);
+      } catch (error) {
+        console.error('Failed to start native speech synthesis:', error);
+        this.isNativeSpeechActive = false;
+        this.nativeSpeechUtterance = null;
+        if (shouldShowNotices(this.settings)) new Notice('Native iOS speech is not available.');
+        if (!this.settings.disablePlaybackControlPopover) {
+          this.hideFloatingPlayerCallback();
+        }
+        this.updateStatusBarCallback(false);
+      } finally {
+        resolve();
+      }
+    });
+  }
+
+  private getPreferredNativeSpeechLocale(): string {
+    const configuredVoice = (this.settings.customVoice.trim() || this.settings.selectedVoice || '').trim();
+    const match = configuredVoice.match(/^([a-z]{2,3}-[A-Z]{2})/);
+    if (match) return match[1];
+
+    try {
+      return getLanguage() || navigator.language || 'en-US';
+    } catch {
+      return 'en-US';
+    }
+  }
+
+  private selectNativeSpeechVoice(): SpeechSynthesisVoice | null {
+    const speechSynthesis = window.speechSynthesis;
+    const voices = speechSynthesis.getVoices();
+    if (voices.length === 0) return null;
+
+    const preferredLocale = this.getPreferredNativeSpeechLocale().toLowerCase();
+    const preferredLanguage = preferredLocale.split('-')[0];
+
+    return voices.find(voice => voice.lang.toLowerCase() === preferredLocale) ||
+      voices.find(voice => voice.lang.toLowerCase().startsWith(`${preferredLanguage}-`)) ||
+      voices.find(voice => voice.default) ||
+      null;
+  }
+
+  private updateNativeSpeechHighlight(event: SpeechSynthesisEvent): void {
+    if (!this.activeEditor || typeof event.charIndex !== 'number') return;
+
+    this.ensureHighlightText();
+
+    const spokenText = this.nativeSpeechText;
+    const wordStart = event.charIndex;
+    if (wordStart < 0 || wordStart >= spokenText.length) return;
+
+    let wordEnd = wordStart;
+    while (wordEnd < spokenText.length && !/\s/.test(spokenText[wordEnd])) {
+      wordEnd++;
+    }
+
+    const wordText = spokenText.slice(wordStart, wordEnd).trim();
+    if (!wordText) return;
+
+    const pos = this.editorContent.indexOf(wordText, this.searchOffset);
+    if (pos === -1) return;
+
+    const from = this.offsetToEditorPos(pos);
+    const to = this.offsetToEditorPos(pos + wordText.length);
+    const rangeKey = `${from.line}:${from.ch}-${to.line}:${to.ch}`;
+    if (rangeKey === this.currentHighlightRangeKey) return;
+
+    try {
+      this.highlightEditorRange(from, to);
+      this.currentHighlightRangeKey = rangeKey;
+      this.searchOffset = pos + wordText.length;
+    } catch {
+      // Editor position may be invalid if document changed.
+    }
+  }
+
   /**
    * Start text-to-speech playback
    * @param selectedText Text to read aloud
    */
-  async startPlayback(selectedText: string): Promise<void> {
+  async startPlayback(selectedText: string, editor?: Editor, initialSearchOffset = 0, highlightSource?: PlaybackHighlightSource): Promise<void> {
     // 1. Stop any existing playback and clean up resources
     this.stopPlaybackInternal(); // This also resets MSE vars and currentPlaybackId
     this.currentPlaybackId++; // Create a new ID for this playback attempt
     const activePlaybackAttemptId = this.currentPlaybackId;
 
+    // Reset text highlighting state
+    this.activeEditor = (editor && this.settings.enableTextHighlight) ? editor : null;
+    this.highlightWords = [];
+    this.lastHighlightIndex = -1;
+    this.editorContent = '';
+    this.playbackHighlightSource = highlightSource ?? null;
+    this.searchOffset = Math.max(0, initialSearchOffset);
+
     // Check if we should use MSE or fallback approach
-    const useMSE = this.isMSESupported();
+    const useMSE = !Platform.isIosApp && this.isMSESupported();
     this.isStreamingWithMSE = useMSE;
 
     this.isPaused = false; // Reset isPaused for the new playback session
@@ -564,6 +847,17 @@ export class AudioPlaybackManager {
       }
     }
     cleanText = truncationResult.content;
+
+    if (Platform.isIosApp) {
+      if (!this.shouldUseNativeSpeech()) {
+        if (shouldShowNotices(this.settings)) new Notice('Native iOS speech is not available in this Obsidian environment.');
+        if (!this.settings.disablePlaybackControlPopover) this.hideFloatingPlayerCallback();
+        this.updateStatusBarCallback(false);
+        return;
+      }
+      await this.startNativeSpeechPlayback(cleanText, activePlaybackAttemptId);
+      return;
+    }
 
     // 3.5 Check if text exceeds 4096 byte limit and chunk if necessary
     const textByteSize = new Blob([cleanText]).size;
@@ -694,6 +988,33 @@ export class AudioPlaybackManager {
         }
       });
 
+      // Collect word boundaries for text highlighting
+      (readable as any).on('wordBoundary', (wb: { offset: number; duration: number; text: string }) => {
+        if (this.currentPlaybackId !== activePlaybackAttemptId) return;
+        if (!this.activeEditor) return;
+
+        const startTime = wb.offset / 10000000;
+        const endTime = (wb.offset + wb.duration) / 10000000;
+
+        // Cache editor content on first boundary
+        this.ensureHighlightText();
+
+        // Pre-compute editor position by forward-searching word text
+        const wordText = wb.text;
+        const pos = this.editorContent.indexOf(wordText, this.searchOffset);
+
+        let from: { line: number; ch: number } | undefined;
+        let to: { line: number; ch: number } | undefined;
+
+        if (pos !== -1) {
+          from = this.offsetToEditorPos(pos);
+          to = this.offsetToEditorPos(pos + wordText.length);
+          this.searchOffset = pos + wordText.length;
+        }
+
+        this.highlightWords.push({ startTime, endTime, text: wordText, from, to });
+      });
+
       readable.on('end', async () => {
         if (this.currentPlaybackId !== activePlaybackAttemptId) return;
 
@@ -757,17 +1078,13 @@ export class AudioPlaybackManager {
       return;
     }
 
-    // Save complete buffer for replay functionality
-    const completeBuffer = Buffer.concat(this.completeMp3BufferArray);
-    const tempFilePath = await this.fileManager.saveTempAudioFile(completeBuffer);
-
     if (this.currentPlaybackId !== activePlaybackAttemptId) {
       this.isStreamingWithMSE = false;
       return;
     }
 
-    if (!tempFilePath && this.settings.showNotices && !Platform.isMobile) {
-      new Notice('Failed to save temporary audio for playback.');
+    if (this.settings.enableReplayOption) {
+      this.scheduleReplayTempFileSave(this.completeMp3BufferArray, activePlaybackAttemptId);
     }
 
     if (!this.settings.disablePlaybackControlPopover) {
@@ -777,6 +1094,41 @@ export class AudioPlaybackManager {
         isPlaying: !this.audioElement.paused,
         isLoading: false
       });
+    }
+  }
+
+  private scheduleReplayTempFileSave(chunks: Uint8Array[], activePlaybackAttemptId: number): void {
+    if (Platform.isMobile || typeof Buffer === 'undefined' || chunks.length === 0) return;
+
+    const chunksToSave = chunks.slice();
+    const saveReplayFile = async () => {
+      if (this.currentPlaybackId !== activePlaybackAttemptId) return;
+
+      try {
+        const completeBuffer = Buffer.concat(chunksToSave);
+        if (this.currentPlaybackId !== activePlaybackAttemptId) return;
+
+        const tempFilePath = await this.fileManager.saveTempAudioFile(completeBuffer);
+        if (!tempFilePath && this.currentPlaybackId === activePlaybackAttemptId && this.settings.showNotices) {
+          new Notice('Failed to save temporary audio for replay.');
+        }
+      } catch (error) {
+        console.error('Error saving replay temp audio:', error);
+      }
+    };
+
+    const requestIdleCallback = (window as typeof window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+    }).requestIdleCallback;
+
+    if (requestIdleCallback) {
+      requestIdleCallback(() => {
+        void saveReplayFile();
+      }, { timeout: 2000 });
+    } else {
+      window.setTimeout(() => {
+        void saveReplayFile();
+      }, 0);
     }
   }
 
@@ -974,6 +1326,21 @@ export class AudioPlaybackManager {
    * Pause current playback 
    */
   pausePlayback(): void {
+    if (this.isNativeSpeechActive) {
+      try {
+        window.speechSynthesis.pause();
+      } catch (error) {
+        console.error('Error pausing native speech:', error);
+      }
+      this.isPaused = true;
+      if (!this.settings.disablePlaybackControlPopover) {
+        this.emitFloatingPlayerState({ currentTime: 0, duration: 0, isPlaying: false, isLoading: false }, true);
+      }
+      this.updateStatusBarCallback(true);
+      this.notifyQueueUIUpdate();
+      return;
+    }
+
     if (this.audioElement && !this.audioElement.paused) {
       this.audioElement.pause();
     }
@@ -983,6 +1350,21 @@ export class AudioPlaybackManager {
    * Resume paused playback
    */
   resumePlayback(): void {
+    if (this.isNativeSpeechActive && this.isPaused) {
+      try {
+        window.speechSynthesis.resume();
+      } catch (error) {
+        console.error('Error resuming native speech:', error);
+      }
+      this.isPaused = false;
+      if (!this.settings.disablePlaybackControlPopover) {
+        this.emitFloatingPlayerState({ currentTime: 0, duration: 0, isPlaying: true, isLoading: false }, true);
+      }
+      this.updateStatusBarCallback(true);
+      this.notifyQueueUIUpdate();
+      return;
+    }
+
     if (this.audioElement && this.audioElement.paused) {
       this.audioElement.play().catch(e => console.error("Error resuming playback:", e));
     }
@@ -997,13 +1379,15 @@ export class AudioPlaybackManager {
   }
 
   private stopPlaybackInternal(): void {
-    this.currentPlaybackId++; // Invalidate ongoing TTS fetches or MSE operations
+    this.currentPlaybackId++;
+    this.stopNativeSpeechInternal(true);
     this.isStreamingWithMSE = false;
     this.isSwitchingToFullFile = false;
     this.streamedPlaybackTimeBeforeSwitch = 0;
     this.mseAudioQueue = [];
     this.isAppendingBuffer = false;
-    this.cancelSleepTimer(); // Cancel sleep timer when stopping
+    this.cancelSleepTimer();
+    this.clearTextHighlight();
 
     if (this.mediaSource) {
       if (this.mediaSource.readyState === 'open' && this.sourceBuffer && this.sourceBuffer.updating) {
@@ -1063,10 +1447,42 @@ export class AudioPlaybackManager {
     // Clearing audioElement.src is now specific to stopPlaybackInternal.
   }
 
+  private stopNativeSpeechInternal(clearReplayText: boolean): void {
+    if (!this.isNativeSpeechActive && !this.nativeSpeechUtterance && !this.nativeSpeechFinished) {
+      if (clearReplayText) this.nativeSpeechText = '';
+      return;
+    }
+
+    try {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    } catch (error) {
+      console.error('Error stopping native speech:', error);
+    }
+
+    this.nativeSpeechUtterance = null;
+    this.isNativeSpeechActive = false;
+    this.nativeSpeechFinished = false;
+    if (clearReplayText) {
+      this.nativeSpeechText = '';
+    }
+  }
+
   /**
    * Replays the current audio from the beginning.
    */
   replayPlayback(): void {
+    if (this.nativeSpeechFinished && this.nativeSpeechText) {
+      const textToReplay = this.nativeSpeechText;
+      this.startPlayback(textToReplay).catch(error => {
+        console.error('Error replaying native speech:', error);
+        if (this.settings.showNotices) new Notice('Error replaying audio.');
+        this.stopPlaybackInternal();
+      });
+      return;
+    }
+
     if (this.audioElement && this.audioElement.src && this.audioElement.duration > 0) {
       this.audioElement.currentTime = 0;
       this.isPaused = false; // Ensure onplay event sets correct UI state
@@ -1094,6 +1510,9 @@ export class AudioPlaybackManager {
    * Check if audio is currently playing
    */
   isPlaying(): boolean {
+    if (this.isNativeSpeechActive) {
+      return !this.isPaused;
+    }
     return this.audioElement !== null && !this.audioElement.paused;
   }
 
@@ -1101,6 +1520,10 @@ export class AudioPlaybackManager {
    * Jumps playback forward by a specified amount of time (default 10 seconds).
    */
   jumpForward(seconds = 10): void {
+    if (this.isNativeSpeechActive || this.nativeSpeechFinished) {
+      return;
+    }
+
     if (this.audioElement && this.audioElement.duration > 0) {
       const newTime = Math.min(this.audioElement.currentTime + seconds, this.audioElement.duration);
       this.seekPlayback(newTime);
@@ -1111,10 +1534,97 @@ export class AudioPlaybackManager {
    * Jumps playback backward by a specified amount of time (default 10 seconds).
    */
   jumpBackward(seconds = 10): void {
+    if (this.isNativeSpeechActive || this.nativeSpeechFinished) {
+      return;
+    }
+
     if (this.audioElement && this.audioElement.duration > 0) {
       const newTime = Math.max(this.audioElement.currentTime - seconds, 0);
       this.seekPlayback(newTime);
     }
+  }
+
+  /**
+   * Update the text highlight in the editor based on current audio playback time.
+   */
+  private updateTextHighlight(): void {
+    if (!this.activeEditor || this.highlightWords.length === 0) return;
+
+    const now = Date.now();
+    if (now - this.lastHighlightUpdate < AudioPlaybackManager.TEXT_HIGHLIGHT_UPDATE_MS) return;
+    this.lastHighlightUpdate = now;
+
+    const currentTime = this.audioElement.currentTime;
+
+    // Search forward from last highlight index
+    const startIndex = Math.max(0, this.lastHighlightIndex);
+    for (let i = startIndex; i < this.highlightWords.length; i++) {
+      const word = this.highlightWords[i];
+      if (currentTime >= word.startTime && currentTime < word.endTime) {
+        if (i !== this.lastHighlightIndex && word.from && word.to) {
+          const rangeKey = `${word.from.line}:${word.from.ch}-${word.to.line}:${word.to.ch}`;
+          if (rangeKey === this.currentHighlightRangeKey) return;
+
+          try {
+            this.highlightEditorRange(word.from, word.to);
+            this.currentHighlightRangeKey = rangeKey;
+          } catch {
+            // Editor position may be invalid if document changed
+          }
+          this.lastHighlightIndex = i;
+        }
+        return;
+      }
+      if (word.startTime > currentTime + 1) return;
+    }
+  }
+
+  /**
+   * Convert a character offset in a string to an EditorPosition {line, ch}.
+   */
+  private ensureHighlightText(): void {
+    if (!this.editorContent) {
+      this.editorContent = this.playbackHighlightSource?.text ?? this.activeEditor?.getValue() ?? '';
+    }
+  }
+
+  private offsetToEditorPos(offset: number): EditorPosition {
+    if (this.playbackHighlightSource) {
+      return this.playbackHighlightSource.offsetToEditorPos(offset);
+    }
+
+    const text = this.editorContent.substring(0, offset);
+    const lines = text.split('\n');
+    return { line: lines.length - 1, ch: lines[lines.length - 1].length };
+  }
+
+  private highlightEditorRange(from: EditorPosition, to: EditorPosition): void {
+    if (!this.activeEditor) return;
+
+    this.activeEditor.setSelection(from, to);
+    this.activeEditor.scrollIntoView({ from, to }, true);
+  }
+
+  /**
+   * Clear all text highlighting state.
+   */
+  private clearTextHighlight(): void {
+    if (this.activeEditor) {
+      try {
+        const cursor = this.activeEditor.getCursor();
+        this.activeEditor.setSelection(cursor, cursor);
+      } catch {
+        // Editor may not be available
+      }
+    }
+    this.activeEditor = null;
+    this.highlightWords = [];
+    this.lastHighlightIndex = -1;
+    this.editorContent = '';
+    this.playbackHighlightSource = null;
+    this.searchOffset = 0;
+    this.lastHighlightUpdate = 0;
+    this.currentHighlightRangeKey = '';
   }
 
   /**
@@ -1132,6 +1642,10 @@ export class AudioPlaybackManager {
    * @param time Time in seconds to seek to
    */
   seekPlayback(time: number): void {
+    if (this.isNativeSpeechActive || this.nativeSpeechFinished) {
+      return;
+    }
+
     if (this.audioElement && this.audioElement.seekable && this.audioElement.seekable.length > 0) {
       const newTime = Math.max(0, Math.min(time, this.audioElement.duration));
       if (isFinite(newTime) && isFinite(this.audioElement.duration) && this.audioElement.duration > 0) {
@@ -1162,22 +1676,29 @@ export class AudioPlaybackManager {
    * Setter for floating player callbacks, to avoid circular dependency issues during instantiation.
    */
   public setFloatingPlayerCallbacks(
-    showFloatingPlayerCallback: (data: { currentTime: number, duration: number, isPlaying: boolean, isLoading: boolean }) => void,
+    showFloatingPlayerCallback: (data: FloatingPlayerState) => void,
     hideFloatingPlayerCallback: () => void,
-    updateFloatingPlayerCallback: (data: { currentTime: number, duration: number, isPlaying: boolean, isLoading: boolean }) => void
+    updateFloatingPlayerCallback: (data: FloatingPlayerState) => void
   ): void {
     this.showFloatingPlayerCallback = (data) => {
       if (!this.settings.disablePlaybackControlPopover) {
+        this.lastFloatingPlayerState = data;
         showFloatingPlayerCallback(data);
       }
     };
     this.hideFloatingPlayerCallback = () => {
       if (!this.settings.disablePlaybackControlPopover) {
+        this.lastFloatingPlayerState = null;
+        this.lastFloatingPlayerProgressUpdate = 0;
         hideFloatingPlayerCallback();
       }
     };
     this.updateFloatingPlayerCallback = (data) => {
       if (!this.settings.disablePlaybackControlPopover) {
+        if (this.lastFloatingPlayerState && this.isSameFloatingPlayerState(this.lastFloatingPlayerState, data)) {
+          return;
+        }
+        this.lastFloatingPlayerState = data;
         updateFloatingPlayerCallback(data);
       }
     };

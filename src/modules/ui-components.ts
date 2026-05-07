@@ -14,6 +14,7 @@ export class UIManager {
   private ribbonIconEl: HTMLElement | null = null;
   private audioManager: AudioPlaybackManager;
   private ttsEngine?: TTSEngine;
+  private lastStatusBarRenderKey = '';
 
   constructor(plugin: EdgeTTSPlugin, settings: EdgeTTSPluginSettings, audioManager: AudioPlaybackManager, ttsEngine?: TTSEngine) {
     this.plugin = plugin;
@@ -38,6 +39,7 @@ export class UIManager {
       this.statusBarEl.remove();
       this.statusBarEl = null;
     }
+    this.lastStatusBarRenderKey = '';
   }
 
   /**
@@ -50,10 +52,13 @@ export class UIManager {
       return;
     }
 
-    this.statusBarEl.empty();
-
     // Check if we have background tasks in progress
     const hasActiveTasks = this.hasActiveTasks();
+    const renderKey = this.getStatusBarRenderKey(withControls, hasActiveTasks);
+    if (renderKey === this.lastStatusBarRenderKey) return;
+
+    this.lastStatusBarRenderKey = renderKey;
+    this.statusBarEl.empty();
 
     if (hasActiveTasks) {
       // Show background task indicator with progress
@@ -81,6 +86,22 @@ export class UIManager {
       readAloudStatusBar.onclick = () => this.plugin.readNoteAloud();
       this.statusBarEl.appendChild(readAloudStatusBar);
     }
+  }
+
+  private getStatusBarRenderKey(withControls: boolean, hasActiveTasks: boolean): string {
+    if (hasActiveTasks && this.ttsEngine) {
+      const tasks = this.ttsEngine.getAllTasks();
+      const processingTask = tasks.find(t => t.status === TTSTaskStatus.PROCESSING);
+      const pendingCount = tasks.filter(t => t.status === TTSTaskStatus.PENDING).length;
+      if (processingTask) return `task:${processingTask.progress}:${pendingCount}`;
+      return `pending:${pendingCount}`;
+    }
+
+    if (withControls) {
+      return `controls:${this.audioManager.isPlaybackPaused() ? 'paused' : 'playing'}`;
+    }
+
+    return 'read';
   }
 
   /**
@@ -283,4 +304,4 @@ export class UIManager {
   updateSettings(settings: EdgeTTSPluginSettings): void {
     this.settings = settings;
   }
-} 
+}
