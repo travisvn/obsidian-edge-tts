@@ -1,5 +1,5 @@
 import { EdgeTTSPluginSettings } from './settings';
-import { Notice, Platform } from 'obsidian';
+import { Notice, Platform, type Editor } from 'obsidian';
 import { UniversalTTSClient as EdgeTTSClient, OUTPUT_FORMAT, createProsodyOptions } from './tts-client-wrapper';
 import { filterFrontmatter, filterMarkdown, shouldShowNotices, checkAndTruncateContent, toArrayBuffer } from '../utils';
 import { ChunkedGenerator } from './chunked-generator';
@@ -61,6 +61,19 @@ export class AudioPlaybackManager {
 
   // Media Session API integration for Android system controls
   private mediaSessionSupported = false;
+
+  // Text highlighting during playback
+  private activeEditor: Editor | null = null;
+  private highlightWords: Array<{
+    startTime: number;
+    endTime: number;
+    text: string;
+    from?: { line: number; ch: number };
+    to?: { line: number; ch: number };
+  }> = [];
+  private lastHighlightIndex = -1;
+  private editorContent = '';
+  private searchOffset = 0;
 
   constructor(
     settings: EdgeTTSPluginSettings,
@@ -124,13 +137,13 @@ export class AudioPlaybackManager {
       if (!this.settings.disablePlaybackControlPopover) {
         this.updateFloatingPlayerCallback({
           currentTime: this.audioElement.currentTime,
-          duration: this.isStreamingWithMSE && !this.mediaSource?.duration ? Infinity : this.audioElement.duration, // Handle MSE duration
+          duration: this.isStreamingWithMSE && !this.mediaSource?.duration ? Infinity : this.audioElement.duration,
           isPlaying: !this.audioElement.paused,
           isLoading: false,
         });
       }
-      // Update Media Session position for system controls
       this.updateMediaSessionPosition();
+      this.updateTextHighlight();
     };
 
     this.audioElement.onended = () => {
@@ -504,11 +517,18 @@ export class AudioPlaybackManager {
    * Start text-to-speech playback
    * @param selectedText Text to read aloud
    */
-  async startPlayback(selectedText: string): Promise<void> {
+  async startPlayback(selectedText: string, editor?: Editor): Promise<void> {
     // 1. Stop any existing playback and clean up resources
     this.stopPlaybackInternal(); // This also resets MSE vars and currentPlaybackId
     this.currentPlaybackId++; // Create a new ID for this playback attempt
     const activePlaybackAttemptId = this.currentPlaybackId;
+
+    // Reset text highlighting state
+    this.activeEditor = (editor && this.settings.enableTextHighlight) ? editor : null;
+    this.highlightWords = [];
+    this.lastHighlightIndex = -1;
+    this.editorContent = '';
+    this.searchOffset = 0;
 
     // Check if we should use MSE or fallback approach
     const useMSE = this.isMSESupported();
@@ -692,6 +712,35 @@ export class AudioPlaybackManager {
           this.mseAudioQueue.push(data);
           this.appendNextChunkToSourceBuffer();
         }
+      });
+
+      // Collect word boundaries for text highlighting
+      (readable as any).on('wordBoundary', (wb: { offset: number; duration: number; text: string }) => {
+        if (this.currentPlaybackId !== activePlaybackAttemptId) return;
+        if (!this.activeEditor) return;
+
+        const startTime = wb.offset / 10000000;
+        const endTime = (wb.offset + wb.duration) / 10000000;
+
+        // Cache editor content on first boundary
+        if (!this.editorContent) {
+          this.editorContent = this.activeEditor.getValue();
+        }
+
+        // Pre-compute editor position by forward-searching word text
+        const wordText = wb.text;
+        const pos = this.editorContent.indexOf(wordText, this.searchOffset);
+
+        let from: { line: number; ch: number } | undefined;
+        let to: { line: number; ch: number } | undefined;
+
+        if (pos !== -1) {
+          from = this.offsetToEditorPos(pos);
+          to = this.offsetToEditorPos(pos + wordText.length);
+          this.searchOffset = pos + wordText.length;
+        }
+
+        this.highlightWords.push({ startTime, endTime, text: wordText, from, to });
       });
 
       readable.on('end', async () => {
@@ -997,13 +1046,14 @@ export class AudioPlaybackManager {
   }
 
   private stopPlaybackInternal(): void {
-    this.currentPlaybackId++; // Invalidate ongoing TTS fetches or MSE operations
+    this.currentPlaybackId++;
     this.isStreamingWithMSE = false;
     this.isSwitchingToFullFile = false;
     this.streamedPlaybackTimeBeforeSwitch = 0;
     this.mseAudioQueue = [];
     this.isAppendingBuffer = false;
-    this.cancelSleepTimer(); // Cancel sleep timer when stopping
+    this.cancelSleepTimer();
+    this.clearTextHighlight();
 
     if (this.mediaSource) {
       if (this.mediaSource.readyState === 'open' && this.sourceBuffer && this.sourceBuffer.updating) {
@@ -1115,6 +1165,61 @@ export class AudioPlaybackManager {
       const newTime = Math.max(this.audioElement.currentTime - seconds, 0);
       this.seekPlayback(newTime);
     }
+  }
+
+  /**
+   * Update the text highlight in the editor based on current audio playback time.
+   */
+  private updateTextHighlight(): void {
+    if (!this.activeEditor || this.highlightWords.length === 0) return;
+
+    const currentTime = this.audioElement.currentTime;
+
+    // Search forward from last highlight index
+    const startIndex = Math.max(0, this.lastHighlightIndex);
+    for (let i = startIndex; i < this.highlightWords.length; i++) {
+      const word = this.highlightWords[i];
+      if (currentTime >= word.startTime && currentTime < word.endTime) {
+        if (i !== this.lastHighlightIndex && word.from && word.to) {
+          try {
+            this.activeEditor.setSelection(word.from, word.to);
+          } catch {
+            // Editor position may be invalid if document changed
+          }
+          this.lastHighlightIndex = i;
+        }
+        return;
+      }
+      if (word.startTime > currentTime + 1) return;
+    }
+  }
+
+  /**
+   * Convert a character offset in a string to an EditorPosition {line, ch}.
+   */
+  private offsetToEditorPos(offset: number): { line: number; ch: number } {
+    const text = this.editorContent.substring(0, offset);
+    const lines = text.split('\n');
+    return { line: lines.length - 1, ch: lines[lines.length - 1].length };
+  }
+
+  /**
+   * Clear all text highlighting state.
+   */
+  private clearTextHighlight(): void {
+    if (this.activeEditor) {
+      try {
+        const cursor = this.activeEditor.getCursor();
+        this.activeEditor.setSelection(cursor, cursor);
+      } catch {
+        // Editor may not be available
+      }
+    }
+    this.activeEditor = null;
+    this.highlightWords = [];
+    this.lastHighlightIndex = -1;
+    this.editorContent = '';
+    this.searchOffset = 0;
   }
 
   /**

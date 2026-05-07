@@ -62,6 +62,7 @@ export interface EdgeTTSPluginSettings {
   enableQueueFeature: boolean;
   queueManagerPosition: { x: number; y: number } | null;
   autoPauseOnWindowBlur: boolean;
+  enableTextHighlight: boolean;
 
   // Experimental and mobile-specific features
   enableExperimentalFeatures: boolean;
@@ -70,6 +71,35 @@ export interface EdgeTTSPluginSettings {
 
 // Top voices to be displayed in the dropdown
 export const TOP_VOICES = [
+  // Chinese (Mandarin)
+  'zh-CN-XiaoxiaoNeural',
+  'zh-CN-XiaoyiNeural',
+  'zh-CN-XiaochenNeural',
+  'zh-CN-XiaohanNeural',
+  'zh-CN-XiaomengNeural',
+  'zh-CN-XiaomoNeural',
+  'zh-CN-XiaoqiuNeural',
+  'zh-CN-XiaoruiNeural',
+  'zh-CN-XiaoshuangNeural',
+  'zh-CN-XiaoxuanNeural',
+  'zh-CN-XiaoyanNeural',
+  'zh-CN-XiaozhenNeural',
+  'zh-CN-YunfengNeural',
+  'zh-CN-YunhaoNeural',
+  'zh-CN-YunjianNeural',
+  'zh-CN-YunxiNeural',
+  'zh-CN-YunxiaNeural',
+  'zh-CN-YunyangNeural',
+  'zh-CN-YunzeNeural',
+  // Chinese (Taiwan)
+  'zh-TW-HsiaoChenNeural',
+  'zh-TW-HsiaoYuNeural',
+  'zh-TW-YunJheNeural',
+  // Chinese (Hong Kong)
+  'zh-HK-HiuGaaiNeural',
+  'zh-HK-HiuMaanNeural',
+  'zh-HK-WanLungNeural',
+  // English
   'en-US-AvaMultilingualNeural',
   'en-US-BrianMultilingualNeural',
   'en-US-AndrewNeural',
@@ -105,7 +135,7 @@ export const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
     filterCodeBlocks: true,
     filterInlineCode: true,
     filterHtmlTags: true,
-    filterTables: true, // This might be one the user wants to adjust
+    filterTables: false, // This might be one the user wants to adjust
     filterImages: true,
     filterFootnotes: true,
     filterComments: true,
@@ -135,6 +165,7 @@ export const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
   enableQueueFeature: true,
   queueManagerPosition: null,
   autoPauseOnWindowBlur: false,
+  enableTextHighlight: true,
 
   // Experimental and mobile-specific features
   enableExperimentalFeatures: false,
@@ -318,6 +349,18 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
           this.plugin.settings.autoPauseOnWindowBlur = value;
           await this.plugin.saveSettings();
           new Notice(`Auto-pause on focus loss ${value ? 'enabled' : 'disabled'}.`);
+        });
+      });
+
+    // Text highlight during TTS playback
+    new Setting(containerEl)
+      .setName('Highlight text during playback')
+      .setDesc('Highlight the current word in the editor as it is read aloud.')
+      .addToggle(toggle => {
+        toggle.setValue(this.plugin.settings.enableTextHighlight);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.enableTextHighlight = value;
+          await this.plugin.saveSettings();
         });
       });
 

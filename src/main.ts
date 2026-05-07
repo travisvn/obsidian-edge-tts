@@ -421,7 +421,7 @@ export default class EdgeTTSPlugin extends Plugin {
 		const lastChar = editor.getLine(lastLine).length;
 		const textFromCursor = editor.getRange(editor.getCursor(), { line: lastLine, ch: lastChar });
 		if (textFromCursor.trim()) {
-			this.audioManager.startPlayback(textFromCursor);
+			this.audioManager.startPlayback(textFromCursor, editor);
 		} else {
 			if (shouldShowNotices(this.settings)) new Notice('No text from cursor selected or available.');
 		}
@@ -510,7 +510,7 @@ export default class EdgeTTSPlugin extends Plugin {
 		}
 
 		// Use audio manager for playback with potentially truncated content
-		await this.audioManager.startPlayback(truncationResult.content);
+		await this.audioManager.startPlayback(truncationResult.content, editor);
 	}
 
 	async generateMP3(editor?: Editor, viewInput?: MarkdownView | MarkdownFileInfo, filePath?: string): Promise<void> {

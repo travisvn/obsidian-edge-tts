@@ -29,8 +29,8 @@
 		"typescript": "^5.9.2"
 	},
 	"dependencies": {
-		"edge-tts-universal": "^1.3.2",
-		"react": "^19.1.1",
-		"react-dom": "^19.1.1"
+		"edge-tts-universal": "^1.4.0",
+		"react": "19.1.1",
+		"react-dom": "19.1.1"
 	}
 }
