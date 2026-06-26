@@ -351,6 +351,12 @@ export interface TruncationResult {
   truncationReason?: 'words' | 'characters';
 }
 
+export function getTruncationLimitLabel(reason: NonNullable<TruncationResult['truncationReason']>): string {
+  return reason === 'words'
+    ? `${MP3_GENERATION_LIMITS.MAX_WORDS.toLocaleString()} words`
+    : `${MP3_GENERATION_LIMITS.MAX_CHARACTERS.toLocaleString()} characters`;
+}
+
 /**
  * Check if content exceeds MP3 generation limits and truncate if necessary
  * @param text - The text content to check and potentially truncate

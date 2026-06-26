@@ -10,7 +10,7 @@ class ProsodyOptions {
 }
 import { Notice, Platform } from 'obsidian';
 import { EdgeTTSPluginSettings } from './settings';
-import { filterFrontmatter, filterMarkdown, checkAndTruncateContent } from '../utils';
+import { filterFrontmatter, filterMarkdown, checkAndTruncateContent, getTruncationLimitLabel } from '../utils';
 
 /**
  * Status of a TTS generation task
@@ -65,8 +65,7 @@ export class TTSEngine {
     const truncationResult = checkAndTruncateContent(text);
 
     if (truncationResult.wasTruncated) {
-      const limitType = truncationResult.truncationReason === 'words' ? 'word' : 'character';
-      const limitValue = truncationResult.truncationReason === 'words' ? '5,000 words' : '30,000 characters';
+      const limitValue = getTruncationLimitLabel(truncationResult.truncationReason ?? 'words');
 
       if (this.settings.showNotices) {
         new Notice(
@@ -255,8 +254,7 @@ export class TTSEngine {
       const truncationResult = checkAndTruncateContent(text);
 
       if (truncationResult.wasTruncated) {
-        const limitType = truncationResult.truncationReason === 'words' ? 'word' : 'character';
-        const limitValue = truncationResult.truncationReason === 'words' ? '5,000 words' : '30,000 characters';
+        const limitValue = getTruncationLimitLabel(truncationResult.truncationReason ?? 'words');
 
         if (this.settings.showNotices) {
           new Notice(
@@ -349,4 +347,4 @@ export class TTSEngine {
   updateSettings(settings: EdgeTTSPluginSettings): void {
     this.settings = settings;
   }
-} 
+}

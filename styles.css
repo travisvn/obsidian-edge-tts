@@ -232,6 +232,48 @@
 	gap: 10px;
 }
 
+.floating-player-ui .playback-speed-control {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+.floating-player-ui .playback-speed-button {
+	min-width: 36px;
+	height: 28px;
+	appearance: none;
+	box-shadow: none;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	line-height: 1;
+}
+
+.floating-player-ui .playback-speed-menu {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 6px);
+	display: grid;
+	grid-template-columns: repeat(2, minmax(44px, 1fr));
+	gap: 2px;
+	padding: 6px;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	box-shadow: var(--shadow-elevation-medium);
+	z-index: 20;
+}
+
+.floating-player-ui .playback-speed-menu button {
+	min-width: 44px;
+	padding: 5px 6px;
+	font-size: var(--font-ui-smaller);
+}
+
+.floating-player-ui .playback-speed-menu button.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
 .floating-player-ui .player-loading-indicator {
 	position: absolute;
 	left: 0;

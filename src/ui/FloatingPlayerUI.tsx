@@ -38,6 +38,10 @@ interface FloatingPlayerUIProps {
   onReplay?: () => void;
   onJumpForward?: () => void;
   onJumpBackward?: () => void;
+  onRevealCurrentHighlight?: () => void;
+  playbackSpeed?: number;
+  playbackSpeedOptions?: number[];
+  onPlaybackSpeedChange?: (speed: number) => void | Promise<void>;
   isLoading?: boolean;
   queueInfo?: { currentIndex: number; totalItems: number; currentTitle?: string; isPlayingFromQueue: boolean };
   onToggleQueue?: () => void;
@@ -59,6 +63,10 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
   onReplay,
   onJumpForward,
   onJumpBackward,
+  onRevealCurrentHighlight,
+  playbackSpeed = 1,
+  playbackSpeedOptions = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+  onPlaybackSpeedChange,
   isLoading = false,
   queueInfo,
   onToggleQueue,
@@ -66,8 +74,11 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
 }) => {
   const [position, setPosition] = useState(initialPosition);
   const [isDragging, setIsDragging] = useState(false);
+  const [isSpeedMenuOpen, setIsSpeedMenuOpen] = useState(false);
   const dragStartOffset = useRef({ x: 0, y: 0 });
   const playerRef = useRef<HTMLDivElement>(null);
+  const speedControlRef = useRef<HTMLDivElement>(null);
+  const speedOptions = playbackSpeedOptions.length > 0 ? playbackSpeedOptions : [1];
 
   // Helper function to get coordinates from either mouse or touch event
   const getEventCoordinates = useCallback((e: MouseEvent | TouchEvent) => {
@@ -84,7 +95,7 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
   const handlePointerDown = useCallback((e: React.MouseEvent<HTMLDivElement, MouseEvent> | React.TouchEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     // Prevent dragging if the click is on a button, the slider, or the close button itself
-    if (target.closest('button') || target.closest('.seek-slider') || target.classList.contains('floating-player-close-button-icon')) {
+    if (target.closest('button') || target.closest('.seek-slider') || target.closest('.playback-speed-control') || target.classList.contains('floating-player-close-button-icon')) {
       return;
     }
 
@@ -145,9 +156,46 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
     setPosition(initialPosition);
   }, [initialPosition]);
 
+  useEffect(() => {
+    if (!isSpeedMenuOpen) return;
+
+    const closeOnOutsideInteraction = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (speedControlRef.current?.contains(target)) return;
+
+      setIsSpeedMenuOpen(false);
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsSpeedMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideInteraction);
+    document.addEventListener('touchstart', closeOnOutsideInteraction);
+    document.addEventListener('focusin', closeOnOutsideInteraction);
+    document.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideInteraction);
+      document.removeEventListener('touchstart', closeOnOutsideInteraction);
+      document.removeEventListener('focusin', closeOnOutsideInteraction);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isSpeedMenuOpen]);
+
   const handleSeek = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (onSeek) {
       onSeek(parseFloat(event.target.value));
+    }
+  };
+
+  const handleSpeedChange = async (speed: number) => {
+    setIsSpeedMenuOpen(false);
+    if (onPlaybackSpeedChange) {
+      await onPlaybackSpeedChange(speed);
     }
   };
 
@@ -167,6 +215,7 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
   const isEffectivelyPaused = isPaused;
   const isAtEnd = duration > 0 && currentTime >= duration - 0.1;
   const isReplayState = isEffectivelyPaused && isAtEnd && !!onReplay;
+  const hasKnownDuration = Number.isFinite(duration) && duration > 0;
 
   return (
     <div
@@ -231,11 +280,11 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
                 <input
                   type="range"
                   min="0"
-                  max={duration}
+                  max={hasKnownDuration ? duration : Math.max(currentTime, 1)}
                   value={currentTime}
                   onChange={handleSeek}
                   className="seek-slider"
-                  disabled={!onSeek || duration === 0 || isLoading}
+                  disabled={!onSeek || !hasKnownDuration || isLoading}
                   aria-label="Seek"
                 />
                 <span>{formatTime(duration)}</span>
@@ -262,7 +311,7 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
                     <ObsidianIcon icon="rotate-cw" />
                   </button>
                 )}
-                {!isReplayState && onJumpBackward && (duration != Infinity) && (
+                {!isReplayState && onJumpBackward && (
                   <div
                     onClick={onJumpBackward}
                     aria-label="Jump Backward 10s"
@@ -281,13 +330,54 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
                     <ObsidianIcon icon="pause" />
                   </button>
                 )}
-                {!isReplayState && onJumpForward && (duration != Infinity) && (
+                {!isReplayState && onJumpForward && (
                   <div
                     onClick={onJumpForward}
                     aria-label="Jump Forward 10s"
                     className="player-control-button"
                   >
                     <ObsidianIcon icon="rotate-cw" />
+                  </div>
+                )}
+                {!isReplayState && onRevealCurrentHighlight && (
+                  <button
+                    type="button"
+                    onClick={onRevealCurrentHighlight}
+                    aria-label="Jump to Current Word"
+                    title="Jump to current word"
+                    className="player-control-button"
+                  >
+                    <ObsidianIcon icon="crosshair" />
+                  </button>
+                )}
+                {!isReplayState && onPlaybackSpeedChange && (
+                  <div className="playback-speed-control" ref={speedControlRef}>
+                    <button
+                      type="button"
+                      className="player-control-button playback-speed-button"
+                      onClick={() => setIsSpeedMenuOpen(!isSpeedMenuOpen)}
+                      aria-label="Change playback speed"
+                      aria-haspopup="menu"
+                      aria-expanded={isSpeedMenuOpen}
+                    >
+                      {playbackSpeed.toFixed(playbackSpeed % 1 === 0 ? 0 : 2).replace(/\.?0+$/u, '')}x
+                    </button>
+                    {isSpeedMenuOpen && (
+                      <div className="playback-speed-menu" role="menu">
+                        {speedOptions.map(speed => (
+                          <button
+                            key={speed}
+                            type="button"
+                            className={Math.abs(speed - playbackSpeed) < 0.01 ? 'is-active' : ''}
+                            onClick={() => handleSpeedChange(speed)}
+                            role="menuitemradio"
+                            aria-checked={Math.abs(speed - playbackSpeed) < 0.01}
+                          >
+                            {speed.toFixed(speed % 1 === 0 ? 0 : 2).replace(/\.?0+$/u, '')}x
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -297,4 +387,4 @@ export const FloatingPlayerUI: React.FC<FloatingPlayerUIProps> = ({
       </div>
     </div>
   );
-}; 
+};

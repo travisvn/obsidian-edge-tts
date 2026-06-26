@@ -8,6 +8,9 @@ import { DIMENSION_ESTIMATES } from './constants';
 interface FloatingUIManagerOptions {
   audioManager: AudioPlaybackManager; // To access playback state and controls
   savePositionCallback: (position: { x: number; y: number }) => Promise<void>; // Added callback
+  getPlaybackSpeed: () => number;
+  getPlaybackSpeedOptions: () => number[];
+  setPlaybackSpeedCallback: (speed: number) => Promise<void>;
   queueUIManager?: QueueUIManager;
   enableQueueFeature: boolean; // Add queue feature setting
 }
@@ -19,6 +22,9 @@ export class FloatingUIManager {
   private lastPosition: { x: number, y: number } | undefined = undefined;
   private isPlayerVisible = false;
   private savePosition: (position: { x: number; y: number }) => Promise<void>; // Store callback
+  private getPlaybackSpeed: () => number;
+  private getPlaybackSpeedOptions: () => number[];
+  private setPlaybackSpeed: (speed: number) => Promise<void>;
   private queueUIManager?: QueueUIManager;
   private enableQueueFeature: boolean; // Store queue feature setting
   private currentPlaybackState: { currentTime: number, duration: number, isPlaying: boolean, isLoading: boolean } = {
@@ -34,6 +40,9 @@ export class FloatingUIManager {
   constructor(options: FloatingUIManagerOptions) {
     this.audioManager = options.audioManager;
     this.savePosition = options.savePositionCallback; // Store callback
+    this.getPlaybackSpeed = options.getPlaybackSpeed;
+    this.getPlaybackSpeedOptions = options.getPlaybackSpeedOptions;
+    this.setPlaybackSpeed = options.setPlaybackSpeedCallback;
     this.queueUIManager = options.queueUIManager;
     this.enableQueueFeature = options.enableQueueFeature; // Store queue feature setting
     this.handleWindowResize = this.handleWindowResize.bind(this); // Bind for the event listener
@@ -160,15 +169,16 @@ export class FloatingUIManager {
         currentTitle: queueStatus.queue[queueStatus.currentIndex]?.title,
         isPlayingFromQueue: queueStatus.isPlayingFromQueue
       } : undefined;
+      const isPaused = !this.currentPlaybackState.isPlaying;
 
       this.reactRoot.render(
         React.createElement(FloatingPlayerUI, {
           isVisible: this.isPlayerVisible,
           onClose: () => this.hidePlayer(),
-          onPause: this.audioManager.isPlaybackPaused() ? undefined : () => this.audioManager.pausePlayback(),
-          onResume: this.audioManager.isPlaybackPaused() ? () => this.audioManager.resumePlayback() : undefined,
+          onPause: isPaused ? undefined : () => this.audioManager.pausePlayback(),
+          onResume: isPaused ? () => this.audioManager.resumePlayback() : undefined,
           onStop: () => this.audioManager.stopPlayback(),
-          isPaused: !this.currentPlaybackState.isPlaying, // Use state passed from AudioPlaybackManager
+          isPaused,
           initialPosition: playerInitialPosition,
           onDragEnd: (position) => {
             this.lastPosition = position;
@@ -183,6 +193,13 @@ export class FloatingUIManager {
           onReplay: () => this.audioManager.replayPlayback(),
           onJumpForward: () => this.audioManager.jumpForward(),
           onJumpBackward: () => this.audioManager.jumpBackward(),
+          onRevealCurrentHighlight: () => this.audioManager.revealCurrentHighlight(),
+          playbackSpeed: this.getPlaybackSpeed(),
+          playbackSpeedOptions: this.getPlaybackSpeedOptions(),
+          onPlaybackSpeedChange: async (speed: number) => {
+            await this.setPlaybackSpeed(speed);
+            this.renderComponent();
+          },
           isLoading: this.currentPlaybackState.isLoading, // Pass isLoading state
           queueInfo: queueInfo, // Pass queue information
           onToggleQueue: (this.enableQueueFeature && this.queueUIManager) ? () => this.queueUIManager?.toggleQueueVisibility() : undefined, // Toggle queue callback
@@ -234,4 +251,4 @@ export class FloatingUIManager {
       clearTimeout(this.resizeDebounceTimeout);
     }
   }
-} 
+}

@@ -32,9 +32,9 @@ The **Obsidian Edge TTS Plugin** is a community plugin for [Obsidian](https://ob
 
 ## Features
 
--   **🔥 NEW: Native Mobile Support** - Now works on both Obsidian Desktop and Obsidian Mobile (iOS/Android)
+-   **Native Mobile Support** - Works on Obsidian Desktop and Obsidian Mobile. iOS playback uses native device speech automatically.
 -   Read selected text or entire notes aloud
--   Choose from a list of top voices or specify a custom voice
+-   Choose from a list of top Edge voices or specify a custom voice. On iOS, the selected voice is used as a language/locale hint for native speech.
 -   Adjust playback speed of voice over
 -   Toggle optional notices for playback status
 -   Option to generate mp3 file and embed it directly in note
@@ -63,6 +63,7 @@ Alternatively, you can manually download the latest release from [GitHub Release
 -   Right-click on a file and select `Generate MP3` to save the narration to an mp3 and embed it in the note (if enabled).
 -   Use the **Show floating playback controls** command from the command palette to open the player if it has been closed. This command is idempotent, meaning if the player is already open, it won't do anything.
 -   Use the **Reset floating player position** command to move the player back to its default bottom-right screen position.
+-   Use the **Read configured section aloud** command with a note-local comment such as `<!-- edge-tts:section heading="### Devotional" -->` to read only that heading section. This is useful for Meta Bind buttons because Obsidian commands do not accept arguments.
 
 ## Settings
 
@@ -73,12 +74,14 @@ To access the plugin settings:
 
     - **Select voice**: Choose from a list of top voices.
     - **Custom voice**: Manually enter a custom voice.
+    - **iOS playback**: Obsidian iOS uses native device speech automatically because Edge TTS WebSocket headers cannot be sent from the iOS plugin environment. Edge voice settings act as a locale hint on iOS.
     - **Playback speed**: Adjust playback speed multiplier.
     - **Show notices**: Toggle notices for playback status and errors.
     - **Show status bar button**: Toggle playback button in status bar.
     - **Disable floating playback controls**: Hides the floating player during audio playback. If you close the player using the 'X' button, you can reopen it using the "Show floating playback controls" command.
     - **Enable replay option**: Keeps the playback controls open after audio finishes to allow replaying.
     - **Enable queue feature**: Toggle the playback queue functionality for continuous playback of multiple notes.
+    - **Start reading from cursor by default**: When no text is selected, `Read note aloud` starts at the cursor instead of the beginning of the note.
     - **Generate MP3**: Toggle settings related to the `Generate MP3` menu option.
     - **Voice Samples**: Visit [tts.travisvn.com](https://tts.travisvn.com) to sample available voices.
 

@@ -9,7 +9,7 @@ class ProsodyOptions {
   }
 }
 import { EdgeTTSPluginSettings } from './settings';
-import { filterFrontmatter, filterMarkdown, checkAndTruncateContent } from '../utils';
+import { filterFrontmatter, filterMarkdown, checkAndTruncateContent, getTruncationLimitLabel } from '../utils';
 import { ChunkStatus } from '../ui/ChunkedProgressUI';
 import type { ChunkedProgressManager } from './ChunkedProgressManager';
 import { MP3_GENERATION_LIMITS } from './constants';
@@ -145,7 +145,7 @@ export class ChunkedGenerator {
       const truncationResult = checkAndTruncateContent(text);
 
       if (truncationResult.wasTruncated) {
-        const limitValue = truncationResult.truncationReason === 'words' ? '5,000 words' : '30,000 characters';
+        const limitValue = getTruncationLimitLabel(truncationResult.truncationReason ?? 'words');
 
         // Show truncation notice in progress manager
         progressManager.updateState({
@@ -361,4 +361,4 @@ export class ChunkedGenerator {
   static getMaxChunkBytes(): number {
     return ChunkedGenerator.EFFECTIVE_MAX_BYTES;
   }
-} 
+}
